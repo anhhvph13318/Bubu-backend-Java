@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Quản lý sản phẩm - Bubu Shop</title>
+
+    <link rel="stylesheet" href="/css/admin.css">
+</head>
+
+<body>
+
+<!-- SIDEBAR -->
+
+<div class="sidebar">
+
+    <div class="logo">
+        BUBU SHOP
+    </div>
+
+    <div class="menu">
+
+        <a href="/admin/products.html" class="active">
+            📦 Sản phẩm
+        </a>
+
+        <a href="#">
+            📁 Danh mục
+        </a>
+
+        <a href="#">
+            🛒 Đơn hàng
+        </a>
+
+    </div>
+
+</div>
+
+
+<!-- MAIN -->
+
+<div class="main">
+
+    <!-- HEADER -->
+
+    <div class="header">
+
+        <div class="header-title">
+            Quản lý cửa hàng
+        </div>
+
+        <div class="admin">
+            👤 Admin
+        </div>
+
+    </div>
+
+
+    <!-- CONTENT -->
+
+    <div class="content">
+
+        <div class="page-header">
+
+            <div>
+                <h1>Quản lý sản phẩm</h1>
+                <p>Danh sách các sản phẩm trong cửa hàng</p>
+            </div>
+
+            <button class="btn-add">
+                + Thêm sản phẩm
+            </button>
+
+        </div>
+
+
+        <!-- SEARCH -->
+
+        <div class="toolbar">
+
+            <input
+                    type="text"
+                    id="searchInput"
+                    class="search-box"
+                    placeholder="🔍 Tìm theo mã hoặc tên sản phẩm..."
+            >
+
+        </div>
+
+
+        <!-- TABLE -->
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                <tr>
+                    <th>ID</th>
+                    <th>Mã SP</th>
+                    <th>Tên sản phẩm</th>
+                    <th>Danh mục</th>
+                    <th>Giá</th>
+                    <th>Tồn kho</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+
+                </thead>
+
+                <tbody id="productTable">
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    // Lưu danh sách sản phẩm lấy từ API
+    let products = [];
+
+
+    // ==============================
+    // LẤY DỮ LIỆU TỪ API
+    // ==============================
+
+    fetch('/api/products')
+        .then(response => response.json())
+        .then(data => {
+
+            products = data;
+
+            displayProducts(products);
+
+        })
+        .catch(error => {
+
+            console.error("Lỗi:", error);
+
+        });
+
+
+    // ==============================
+    // HIỂN THỊ SẢN PHẨM
+    // ==============================
+
+    function displayProducts(list) {
+
+        const table = document.getElementById('productTable');
+
+        table.innerHTML = '';
+
+
+        list.forEach(product => {
+
+            const price = new Intl.NumberFormat('vi-VN')
+                .format(product.price);
+
+
+            const status = product.status === 1
+                ? '<span class="status active">Hoạt động</span>'
+                : '<span class="status inactive">Ngừng bán</span>';
+
+
+            const row = `
+                <tr>
+
+                    <td>${product.id}</td>
+
+                    <td>
+                        <strong>${product.code}</strong>
+                    </td>
+
+                    <td>
+                        ${product.name}
+                    </td>
+
+                    <td>
+                        ${product.categoryName}
+                    </td>
+
+                    <td class="price">
+                        ${price} ₫
+                    </td>
+
+                    <td>
+                        ${product.totalQuantity}
+                    </td>
+
+                    <td>
+                        ${status}
+                    </td>
+
+                    <td>
+
+                        <button class="btn-edit">
+                            Sửa
+                        </button>
+
+                        <button class="btn-delete">
+                            Xóa
+                        </button>
+
+                    </td>
+
+                </tr>
+            `;
+
+            table.innerHTML += row;
+
+        });
+
+
+        // Nếu không có sản phẩm
+        if (list.length === 0) {
+
+            table.innerHTML = `
+                <tr>
+                    <td colspan="8" class="empty">
+                        Không tìm thấy sản phẩm
+                    </td>
+                </tr>
+            `;
+
+        }
+
+    }
+
+
+    // ==============================
+    // TÌM KIẾM
+    // ==============================
+
+    document
+        .getElementById('searchInput')
+        .addEventListener('input', function () {
+
+            const keyword = this.value
+                .toLowerCase()
+                .trim();
+
+
+            const result = products.filter(product => {
+
+                return product.name
+                        .toLowerCase()
+                        .includes(keyword)
+
+                    ||
+
+                    product.code
+                        .toLowerCase()
+                        .includes(keyword);
+
+            });
+
+
+            displayProducts(result);
+
+        });
+
+</script>
+
+</body>
+</html>
