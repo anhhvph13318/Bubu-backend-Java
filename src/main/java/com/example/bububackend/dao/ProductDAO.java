@@ -57,4 +57,43 @@ public class ProductDAO {
             return p;
         });
     }
+
+    public  Product findById(int productId) {
+        String sql = """
+        SELECT p.Id,
+               p.Code,
+               p.Name,
+               p.Price,
+               p.Description,
+               p.ImageUrl,
+               p.CategoryId,
+               c.Name AS CategoryName,
+               p.Status,
+               ISNULL(
+                   (SELECT SUM(d.Quantity)
+                    FROM ProductDetail d
+                    WHERE d.ProductId = p.Id),
+                   0
+               ) AS TotalQty
+        FROM Product p
+        JOIN Category c ON c.Id = p.CategoryId
+        WHERE p.Id = ?
+        """;
+        return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+            Product p = new Product();
+
+            p.setId(rs.getInt("Id"));
+            p.setCode(rs.getString("Code"));
+            p.setName(rs.getString("Name"));
+            p.setPrice(rs.getBigDecimal("Price"));
+            p.setDescription(rs.getString("Description"));
+            p.setImageUrl(rs.getString("ImageUrl"));
+            p.setCategoryId(rs.getInt("CategoryId"));
+            p.setCategoryName(rs.getString("CategoryName"));
+            p.setStatus(rs.getInt("Status"));
+            p.setTotalQuantity(rs.getInt("TotalQty"));
+
+            return p;
+        },productId);
+    }
 }
