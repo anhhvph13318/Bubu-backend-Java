@@ -1,10 +1,24 @@
 package com.example.bububackend.model;
 
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "Category")
 public class Category {
-    public int id;
-    public String Name;
-    public String Description;
-    public boolean isDeleted;
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "`Id`")
+    private int id;
+
+    @Column(name = "`Name`")
+    private String name;
+
+    @Column(name = "`Description`")
+    private String description;
+
+    @Column(name = "`IsDeleted`")
+    private boolean isDeleted;
 
     public int getId() {
         return id;
@@ -15,19 +29,19 @@ public class Category {
     }
 
     public String getName() {
-        return Name;
+        return name;
     }
 
     public void setName(String name) {
-        Name = name;
+        this.name = name;
     }
 
     public String getDescription() {
-        return Description;
+        return description;
     }
 
     public void setDescription(String description) {
-        Description = description;
+        this.description = description;
     }
 
     public boolean isDeleted() {

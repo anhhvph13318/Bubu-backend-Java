@@ -1,34 +1,86 @@
-/* =========================================================
- * Bubu Admin - vanilla JS, không cần build, không cần thư viện
+/* =====================================================================
+ * BUBU ADMIN - vanilla JS, không cần build, không cần thư viện
  * Đặt tại: src/main/resources/static/admin/js/app.js
  *
- * Sản phẩm lấy từ API thật (MOCK.products = false);
- * danh mục và đơn hàng vẫn là dữ liệu mẫu cho tới khi có API.
- * Chỉnh ENDPOINTS và ALIASES cho khớp controller / JSON của bạn.
- * ========================================================= */
+ * MỤC LỤC (tìm nhanh bằng Ctrl+F theo số phần, ví dụ "[5]")
+ *   [1]  Cấu hình                      - bật/tắt dữ liệu mẫu, đường dẫn API
+ *   [2]  Tiện ích chung                - DOM, định dạng tiền/ngày, icon
+ *   [3]  Gọi API (HTTP)                - hàm fetch dùng chung
+ *   [4]  Chuyển đổi dữ liệu API <-> UI - nhận diện tên trường của backend
+ *        [4.1] Bảng tên trường (ALIASES)
+ *        [4.2] Sản phẩm
+ *        [4.3] Danh mục (gắn vào sản phẩm)
+ *        [4.4] Đơn hàng
+ *   [5]  Lớp truy cập dữ liệu (api)    - list / save / remove
+ *   [6]  Trạng thái & hằng số giao diện
+ *   [7]  Thành phần giao diện chung    - toast, modal, drawer, phân trang
+ *   [8]  Màn hình SẢN PHẨM
+ *        [8.1] Biến thể sản phẩm (bảng ProductDetail: size / màu / số lượng)
+ *   [9]  Màn hình DANH MỤC
+ *   [10] Màn hình ĐƠN HÀNG
+ *   [11] Màn hình TÀI KHOẢN
+ *   [12] Điều hướng (routes) + sự kiện chung + khởi động
+ *
+ * Cách dùng với backend: chỉnh [1] ENDPOINTS và [4.1] ALIASES cho khớp
+ * controller / JSON của bạn. Mọi thứ khác không cần đụng tới.
+ * ===================================================================== */
 (() => {
     'use strict';
 
-    // true = dùng dữ liệu mẫu, false = gọi API thật (đặt riêng cho từng loại)
-    const MOCK = { products: false, categories: true, orders: false };
+    /* =================================================================
+     * [1] CẤU HÌNH
+     * ================================================================= */
+
+    // true = dùng dữ liệu mẫu (bộ nhớ `db`), false = gọi API thật. Đặt riêng cho từng loại.
+    const MOCK = { products: false, categories: false, orders: false, details: false, accounts: false };
+
+    // Đường dẫn API của từng loại dữ liệu
     const ENDPOINTS = {
         products: '/api/products',
         categories: '/api/categories',
         orders: '/api/orders',
+        details: '/api/product-details', // biến thể sản phẩm (size / màu / số lượng)
+        accounts: '/api/accounts',       // tài khoản quản trị
     };
+
+    // Số dòng mỗi trang ở các bảng
     const PAGE_SIZE = 8;
 
-    /* ---------- Tiện ích ---------- */
-    const $ = (s, r = document) => r.querySelector(s);
-    const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+    // Kho dữ liệu mẫu, chỉ dùng khi MOCK.* = true. Hiện để trống;
+    // nextId dùng để cấp id cho bản ghi mới ở chế độ mẫu.
+    const db = {
+        products: [], categories: [], orders: [], details: [], accounts: [],
+        nextId: { products: 1, categories: 1, orders: 1, details: 1, accounts: 1 },
+    };
+
+    /* =================================================================
+     * [2] TIỆN ÍCH CHUNG
+     * ================================================================= */
+
+    // --- Chọn phần tử DOM ---
+    const $ = (s, r = document) => r.querySelector(s);           // chọn 1 phần tử
+    const $$ = (s, r = document) => [...r.querySelectorAll(s)];  // chọn nhiều phần tử (trả về mảng)
+
+    // --- Chống chèn mã HTML (XSS): luôn dùng esc() khi in dữ liệu người dùng vào HTML ---
     const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // --- Định dạng hiển thị ---
     const money = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) + ' ₫';
     const validDate = (iso) => { const d = new Date(iso); return iso && !isNaN(d) ? d : null; };
     const fmtDate = (iso) => { const d = validDate(iso); return d ? d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'; };
     const fmtDateTime = (iso) => { const d = validDate(iso); return d ? d.toLocaleString('vi-VN') : '—'; };
-    const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
 
+    // Chuẩn hóa chuỗi để tìm kiếm: chữ thường + bỏ dấu tiếng Việt ("Áo Đẹp" -> "ao dep")
+    const norm = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+
+    // Sao chép sâu một object (dùng cho dữ liệu mẫu)
+    const clone = (o) => JSON.parse(JSON.stringify(o));
+
+    // --- Bộ icon SVG dùng trong giao diện ---
     const ICON = {
+        lock: '<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+        unlock: '<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>',
+        variants: '<svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>',
         view: '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
         edit: '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"/></svg>',
         del: '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
@@ -37,56 +89,40 @@
         check: '<svg viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>',
         alert: '<svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
         cart: '<svg viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/></svg>',
+        money: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-dollar-sign preview-icon"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        cancel: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-circle-x preview-icon"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+        shipping: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-truck preview-icon"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>',
+        done: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-check preview-icon"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m16 9-5.5 5.5L8 12"/></svg>'
     };
 
-    /* ---------- Dữ liệu mẫu ---------- */
-    const db = {
-        categories: [
-            { id: 1, name: 'Đồ uống', description: 'Cà phê, trà, nước ép và các loại thức uống', icon: '🥤' },
-            { id: 2, name: 'Bánh ngọt', description: 'Bánh kem, bánh mì ngọt, cookie', icon: '🍰' },
-            { id: 3, name: 'Đồ ăn nhanh', description: 'Burger, sandwich, snack', icon: '🍔' },
-            { id: 4, name: 'Quà tặng', description: 'Set quà, hộp quà theo dịp', icon: '🎁' },
-            { id: 5, name: 'Phụ kiện', description: 'Ly, bình giữ nhiệt, túi vải', icon: '🧴' },
-        ],
-        products: [
-            { id: 1, name: 'Cà phê sữa đá', sku: 'DU-001', categoryId: 1, price: 29000, stock: 120, status: 'active', icon: '☕', description: 'Cà phê rang xay pha phin truyền thống, kết hợp sữa đặc, uống lạnh với đá.' },
-            { id: 2, name: 'Trà đào cam sả', sku: 'DU-002', categoryId: 1, price: 39000, stock: 85, status: 'active', icon: '🍑', description: 'Trà đen ủ lạnh với đào miếng, cam tươi và sả thơm.' },
-            { id: 3, name: 'Nước ép cam tươi', sku: 'DU-003', categoryId: 1, price: 35000, stock: 6, status: 'active', icon: '🍊', description: 'Cam vắt nguyên chất, không đường, không chất bảo quản.' },
-            { id: 4, name: 'Matcha latte', sku: 'DU-004', categoryId: 1, price: 45000, stock: 40, status: 'active', icon: '🍵', description: 'Bột matcha Nhật Bản đánh cùng sữa tươi.' },
-            { id: 5, name: 'Bánh tiramisu', sku: 'BN-001', categoryId: 2, price: 55000, stock: 24, status: 'active', icon: '🍰', description: 'Tiramisu vị cà phê, phủ bột cacao, làm mới mỗi ngày.' },
-            { id: 6, name: 'Cookie socola chip', sku: 'BN-002', categoryId: 2, price: 25000, stock: 0, status: 'out', icon: '🍪', description: 'Cookie giòn ngoài mềm trong với socola đen.' },
-            { id: 7, name: 'Croissant bơ', sku: 'BN-003', categoryId: 2, price: 32000, stock: 33, status: 'active', icon: '🥐', description: 'Bánh sừng bò nhiều lớp, vị bơ Pháp.' },
-            { id: 8, name: 'Burger gà giòn', sku: 'AN-001', categoryId: 3, price: 59000, stock: 18, status: 'active', icon: '🍔', description: 'Gà chiên giòn, xà lách, sốt mayonnaise đặc biệt.' },
-            { id: 9, name: 'Sandwich trứng', sku: 'AN-002', categoryId: 3, price: 38000, stock: 52, status: 'active', icon: '🥪', description: 'Bánh mì sandwich nướng, trứng ốp la, phô mai.' },
-            { id: 10, name: 'Khoai tây chiên', sku: 'AN-003', categoryId: 3, price: 29000, stock: 70, status: 'hidden', icon: '🍟', description: 'Khoai tây cắt sợi chiên vàng, kèm sốt cà.' },
-            { id: 11, name: 'Hộp quà Bubu', sku: 'QT-001', categoryId: 4, price: 199000, stock: 12, status: 'active', icon: '🎁', description: 'Set quà gồm 2 bánh, 1 ly giữ nhiệt và thiệp viết tay.' },
-            { id: 12, name: 'Ly giữ nhiệt 500ml', sku: 'PK-001', categoryId: 5, price: 149000, stock: 4, status: 'active', icon: '🧴', description: 'Inox 304, giữ lạnh 12 giờ, giữ nóng 6 giờ.' },
-            { id: 13, name: 'Túi vải canvas', sku: 'PK-002', categoryId: 5, price: 69000, stock: 60, status: 'active', icon: '👜', description: 'Túi tote vải canvas in logo Bubu.' },
-        ],
-        orders: [
-            { id: 1, code: 'DH-10241', customer: 'Nguyễn Văn An', phone: '0912 345 678', address: '12 Lê Lợi, TP. Bắc Giang', date: '2026-10-05T09:12:00', status: 'pending', payment: 'COD', items: [{ productId: 1, qty: 2 }, { productId: 5, qty: 1 }] },
-            { id: 2, code: 'DH-10240', customer: 'Trần Thị Bích', phone: '0987 654 321', address: '88 Hùng Vương, Hà Nội', date: '2026-10-05T08:40:00', status: 'shipping', payment: 'Chuyển khoản', items: [{ productId: 11, qty: 1 }] },
-            { id: 3, code: 'DH-10239', customer: 'Lê Minh Quân', phone: '0903 111 222', address: '5 Trần Phú, Hải Phòng', date: '2026-10-04T18:05:00', status: 'done', payment: 'Ví điện tử', items: [{ productId: 2, qty: 3 }, { productId: 7, qty: 2 }] },
-            { id: 4, code: 'DH-10238', customer: 'Phạm Thu Hà', phone: '0977 888 999', address: '31 Nguyễn Huệ, Đà Nẵng', date: '2026-10-04T14:30:00', status: 'confirmed', payment: 'COD', items: [{ productId: 8, qty: 2 }, { productId: 10, qty: 2 }] },
-            { id: 5, code: 'DH-10237', customer: 'Hoàng Đức Long', phone: '0966 222 333', address: '9 Hai Bà Trưng, TP.HCM', date: '2026-10-03T11:20:00', status: 'cancelled', payment: 'COD', items: [{ productId: 12, qty: 1 }] },
-            { id: 6, code: 'DH-10236', customer: 'Vũ Ngọc Mai', phone: '0944 555 666', address: '77 Điện Biên Phủ, Huế', date: '2026-10-03T10:02:00', status: 'done', payment: 'Chuyển khoản', items: [{ productId: 4, qty: 2 }, { productId: 13, qty: 1 }] },
-            { id: 7, code: 'DH-10235', customer: 'Đặng Quốc Bảo', phone: '0933 777 000', address: '20 Quang Trung, Cần Thơ', date: '2026-10-02T16:45:00', status: 'pending', payment: 'COD', items: [{ productId: 3, qty: 4 }] },
-        ],
-        nextId: { products: 14, categories: 6, orders: 8 },
-    };
-
-    /* ---------- Lớp truy cập dữ liệu (đổi sang fetch khi có API) ---------- */
+    /* =================================================================
+     * [3] GỌI API (HTTP)
+     * Hàm fetch dùng chung: tự gửi JSON, ném lỗi nếu HTTP không thành công,
+     * trả null nếu server trả 204 (không có nội dung, ví dụ sau khi xóa).
+     * ================================================================= */
     async function http(url, opts = {}) {
         const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
-        if (!res.ok) throw new Error('Lỗi ' + res.status);
+        if (!res.ok) {
+            // Cố đọc thông báo lỗi mà backend trả về (message / error / detail) để hiện cho người dùng
+            let msg = 'Lỗi ' + res.status;
+            try { const b = await res.json(); msg = b.message || b.error || b.detail || msg; } catch (_) { /* không có JSON thì giữ mã lỗi */ }
+            throw new Error(msg);
+        }
         return res.status === 204 ? null : res.json();
     }
-    const clone = (o) => JSON.parse(JSON.stringify(o));
 
-    /* ---------- Chuyển đổi dữ liệu API <-> giao diện ----------
-     * Tự nhận diện các tên trường thường gặp. Nếu JSON của bạn dùng tên khác,
-     * chỉ cần thêm tên đó vào mảng tương ứng bên dưới. */
+    /* =================================================================
+     * [4] CHUYỂN ĐỔI DỮ LIỆU API <-> GIAO DIỆN
+     * Mỗi backend đặt tên trường một kiểu (price / giaBan / gia ...).
+     * Phần này tự nhận diện các tên thường gặp để giao diện luôn dùng
+     * một dạng dữ liệu thống nhất, và khi lưu thì trả về đúng dạng backend.
+     * ================================================================= */
+
+    /* ---------- [4.1] Bảng tên trường (ALIASES) ----------
+     * Nếu JSON của bạn dùng tên khác, chỉ cần THÊM tên đó vào mảng tương ứng.
+     * Tên đứng đầu mảng là tên mặc định khi gửi dữ liệu mới lên backend. */
     const ALIASES = {
+        // --- sản phẩm ---
         id: ['id', 'productId', 'maSanPham', 'ma'],
         name: ['name', 'productName', 'tenSanPham', 'ten', 'title'],
         sku: ['sku', 'code', 'productCode', 'maSP', 'maSanPham'],
@@ -107,25 +143,46 @@
         order_payment: ['paymentMethod', 'payment', 'phuongThucThanhToan', 'hinhThucThanhToan'],
         order_total: ['total', 'totalAmount', 'totalPrice', 'tongTien', 'grandTotal', 'amount'],
         order_items: ['items', 'orderItems', 'details', 'orderDetails', 'chiTiet', 'chiTietDonHang', 'chiTietHoaDon', 'lines', 'products'],
+        // --- từng dòng sản phẩm trong đơn ---
         item_product: ['product', 'sanPham'],
         item_productId: ['productId', 'sanPhamId', 'idSanPham'],
         item_name: ['productName', 'name', 'tenSanPham', 'ten'],
         item_price: ['price', 'unitPrice', 'donGia', 'gia', 'giaBan'],
         item_qty: ['quantity', 'qty', 'soLuong'],
     };
-    const NEST = { name: ['name', 'fullName', 'hoTen', 'tenKhachHang', 'ten'], phone: ['phone', 'phoneNumber', 'sdt', 'soDienThoai'], address: ['address', 'diaChi'] };
+
+    // Tên trường khi khách hàng là object lồng bên trong đơn: { customer: { name, phone, address } }
+    const NEST = {
+        name: ['name', 'fullName', 'hoTen', 'tenKhachHang', 'ten'],
+        phone: ['phone', 'phoneNumber', 'sdt', 'soDienThoai'],
+        address: ['address', 'diaChi'],
+    };
+
+    // --- Hàm đọc dữ liệu theo ALIASES ---
+    // Lấy giá trị đầu tiên tìm thấy trong object theo danh sách tên (dùng cho object lồng nhau)
     const nestGet = (o, list, d = '') => { const k = list.find((x) => x in o); return k && o[k] != null ? o[k] : d; };
+    // Cho biết backend đang dùng TÊN TRƯỜNG nào cho `key` (null nếu không có)
     const pick = (raw, key) => ALIASES[key].find((k) => k in raw) || null;
+    // Lấy GIÁ TRỊ của `key` từ dữ liệu thô, không có thì dùng giá trị mặc định d
     const get = (raw, key, d) => { const k = pick(raw, key); return k == null || raw[k] == null ? d : raw[k]; };
+    // Backend có thể bọc danh sách trong content / data / items... -> luôn trả về mảng
     const unwrapList = (res) => (Array.isArray(res) ? res : (res && (res.content || res.data || res.items || res.products || res.result)) || []);
 
+    /* ---------- [4.2] Sản phẩm ---------- */
+
+    // Bản ghi sản phẩm đầu tiên lấy từ API, dùng làm "khuôn" tên trường khi tạo sản phẩm mới
+    let sampleRaw = null;
+
+    // API -> giao diện: biến một sản phẩm thô thành dạng thống nhất
     function fromApiProduct(raw, i) {
+        // Danh mục có thể là object {id, name}, số (id) hoặc chuỗi (tên)
         const cat = get(raw, 'category', null);
         let categoryName = '', categoryApiId = null;
         if (cat && typeof cat === 'object') { categoryName = cat.name ?? cat.tenDanhMuc ?? cat.ten ?? ''; categoryApiId = cat.id ?? null; }
         else if (typeof cat === 'number') categoryApiId = cat;
         else if (cat != null) categoryName = String(cat);
 
+        // Trạng thái có thể là boolean / 0-1 / chuỗi -> quy về active | hidden | out
         const st = get(raw, 'status', 'active');
         let status = 'active';
         if (st === false || st === 0 || st === '0') status = 'hidden';
@@ -140,24 +197,26 @@
             status,
             description: String(get(raw, 'description', '')),
             image: String(get(raw, 'image', '')),
-            categoryName, categoryApiId, _raw: raw,
+            categoryName, categoryApiId,
+            _raw: raw, // giữ nguyên dữ liệu gốc để khi lưu không làm mất trường lạ
         };
     }
 
-    let sampleRaw = null; // sản phẩm đầu tiên từ API, dùng làm mẫu cấu trúc cho sản phẩm mới
-
+    // Giao diện -> API: ghi các thay đổi đè lên dữ liệu gốc, dùng đúng tên trường của backend
     function toApiProduct(item) {
         const raw = { ...(item._raw || {}) };
-        const ref = item._raw || sampleRaw || {};
+        const ref = item._raw || sampleRaw || {}; // sản phẩm mới thì lấy mẫu từ sản phẩm đầu tiên
         const set = (key, val) => { raw[pick(ref, key) || ALIASES[key][0]] = val; };
         set('name', item.name); set('sku', item.sku); set('price', item.price);
         set('stock', item.stock); set('description', item.description); set('image', item.image);
         if (item.id != null) set('id', item.id);
 
+        // Trạng thái: ghi lại đúng kiểu backend đang dùng (boolean / số / chuỗi)
         const sk = pick(ref, 'status') || 'status';
         const cur = ref[sk];
         raw[sk] = typeof cur === 'boolean' ? item.status === 'active' : typeof cur === 'number' ? (item.status === 'active' ? 1 : 0) : item.status;
 
+        // Danh mục: ghi lại là object / tên / id tùy backend
         const c = data.categories.find((x) => x.id === item.categoryId);
         if (c) {
             const ck = pick(ref, 'category') || 'category';
@@ -168,16 +227,19 @@
         return raw;
     }
 
-    // Gắn danh mục cho sản phẩm lấy từ API. Nếu danh mục vẫn là dữ liệu mẫu,
-    // tạm dựng danh sách danh mục từ chính các sản phẩm để bộ lọc hoạt động đúng.
+    /* ---------- [4.3] Danh mục (gắn vào sản phẩm) ----------
+     * Gắn categoryId cho từng sản phẩm. Nếu danh mục vẫn là dữ liệu mẫu (MOCK),
+     * tạm dựng danh sách danh mục từ chính các sản phẩm để bộ lọc hoạt động đúng. */
     function linkCategories(products, categories) {
         if (!MOCK.categories) {
+            // Danh mục thật: ghép theo id hoặc theo tên
             products.forEach((p) => {
                 const c = categories.find((x) => x.id === p.categoryApiId || (p.categoryName && x.name === p.categoryName));
                 p.categoryId = c ? c.id : undefined;
             });
             return categories;
         }
+        // Danh mục mẫu: dựng từ sản phẩm
         const map = new Map();
         products.forEach((p) => {
             const key = p.categoryApiId ?? p.categoryName;
@@ -190,11 +252,16 @@
         return [...map.values()];
     }
 
-    /* ---------- Đơn hàng ---------- */
+    /* ---------- [4.4] Đơn hàng ---------- */
+
+    // Thứ tự trạng thái chuẩn (dùng khi backend trả trạng thái dạng số 0,1,2...)
     const ORDER_KEYS = ['pending', 'confirmed', 'shipping', 'done', 'cancelled'];
-    const statusSeen = {}; // trạng thái giao diện -> giá trị gốc của backend (học từ dữ liệu tải về)
+    // Trạng thái giao diện -> giá trị gốc backend (học từ dữ liệu tải về để ghi lại đúng kiểu)
+    const statusSeen = {};
+    // Đơn hàng đầu tiên từ API, dùng làm khuôn tên trường
     let sampleOrder = null;
 
+    // Quy trạng thái bất kỳ của backend (số / tiếng Anh / tiếng Việt) về 1 trong ORDER_KEYS hoặc 'other'
     function normOrderStatus(v) {
         if (typeof v === 'number') return ORDER_KEYS[v] || 'other';
         const s = norm(v).replace(/[_-]+/g, ' ').trim();
@@ -207,12 +274,16 @@
         if (/confirm|xac nhan|process|prepar/.test(s)) return 'confirmed';
         return 'other';
     }
+
+    // Ngược lại: từ trạng thái giao diện -> giá trị gửi lên backend
     function statusToRaw(key, cur) {
-        if (statusSeen[key] !== undefined) return statusSeen[key];
-        if (typeof cur === 'number') return ORDER_KEYS.indexOf(key);
+        if (statusSeen[key] !== undefined) return statusSeen[key];          // đã thấy backend dùng giá trị nào thì dùng đúng giá trị đó
+        if (typeof cur === 'number') return ORDER_KEYS.indexOf(key);        // backend dùng số
         const guess = { pending: 'PENDING', confirmed: 'CONFIRMED', shipping: 'SHIPPING', done: 'COMPLETED', cancelled: 'CANCELLED' }[key];
         return typeof cur === 'string' && cur === cur.toLowerCase() ? guess.toLowerCase() : guess;
     }
+
+    // Quy ngày giờ về chuỗi ISO (hỗ trợ cả dạng mảng [năm, tháng, ngày, giờ...] của Java LocalDateTime)
     const toIso = (v) => {
         if (v == null || v === '') return '';
         if (Array.isArray(v)) { const [y, m = 1, d = 1, h = 0, mi = 0, s = 0] = v; return new Date(y, m - 1, d, h, mi, s).toISOString(); }
@@ -220,10 +291,13 @@
         return isNaN(t) ? '' : t.toISOString();
     };
 
+    // API -> giao diện: biến một đơn hàng thô thành dạng thống nhất
     function fromApiOrder(raw, i) {
         const id = get(raw, 'order_id', i + 1);
+        // Khách hàng có thể là chuỗi (tên) hoặc object lồng {name, phone, address}
         const cust = get(raw, 'order_customer', '');
         const isObj = cust && typeof cust === 'object';
+        // Trạng thái: nhớ giá trị gốc đầu tiên thấy được để sau này ghi lại đúng kiểu
         const rawStatus = get(raw, 'order_status', '');
         const status = normOrderStatus(rawStatus);
         if (status !== 'other' && statusSeen[status] === undefined) statusSeen[status] = rawStatus;
@@ -238,8 +312,9 @@
             date: toIso(get(raw, 'order_date', '')),
             status, statusRaw: String(rawStatus),
             payment: String(get(raw, 'order_payment', '')),
-            total: total == null || isNaN(Number(total)) ? null : Number(total),
+            total: total == null || isNaN(Number(total)) ? null : Number(total), // null = tự tính từ các dòng sản phẩm
             items: (Array.isArray(items) ? items : []).map((it) => {
+                // Sản phẩm trong dòng có thể là object, id số, hoặc nằm thẳng trong dòng
                 const p = get(it, 'item_product', null);
                 const po = p && typeof p === 'object' ? p : {};
                 return {
@@ -249,14 +324,17 @@
                     qty: Number(get(it, 'item_qty', 1)) || 1,
                 };
             }),
-            _raw: raw,
+            _raw: raw, // giữ dữ liệu gốc
         };
     }
 
+    // Giao diện -> API: chỉ ghi lại những trường mà form đơn hàng cho sửa
     function toApiOrder(item) {
         const raw = { ...(item._raw || {}) };
         const ref = item._raw || sampleOrder || {};
-        const setIf = (key, val) => { const k = pick(ref, key); if (k) raw[k] = val; };
+        const setIf = (key, val) => { const k = pick(ref, key); if (k) raw[k] = val; }; // chỉ ghi nếu backend có trường này
+
+        // Khách hàng: nếu backend để dạng object lồng thì cập nhật từng trường bên trong
         const ck = pick(raw, 'order_customer');
         if (ck && raw[ck] && typeof raw[ck] === 'object') {
             const o = { ...raw[ck] };
@@ -264,6 +342,7 @@
             raw[ck] = o;
         } else setIf('order_customer', item.customer);
         setIf('order_phone', item.phone); setIf('order_address', item.address); setIf('order_payment', item.payment);
+
         // Chỉ ghi trạng thái khi người dùng thật sự đổi; nếu không, giữ nguyên giá trị gốc của backend
         const sk = pick(ref, 'order_status') || 'status';
         const original = item._raw ? normOrderStatus(item._raw[sk]) : null;
@@ -271,7 +350,14 @@
         return raw;
     }
 
+    /* =================================================================
+     * [5] LỚP TRUY CẬP DỮ LIỆU (api)
+     * Giao diện chỉ gọi api.list / api.save / api.remove, không quan tâm
+     * dữ liệu đến từ backend thật hay dữ liệu mẫu.
+     *   name = 'products' | 'categories' | 'orders'
+     * ================================================================= */
     const api = {
+        // Lấy danh sách và đổi sang dạng thống nhất của giao diện
         list: async (name) => {
             if (MOCK[name]) return clone(db[name]);
             const arr = unwrapList(await http(ENDPOINTS[name]));
@@ -279,18 +365,21 @@
                 if (arr[0]) { sampleOrder = arr[0]; console.info('[Bubu] Mẫu JSON từ ' + ENDPOINTS.orders + ':', arr[0]); }
                 return arr.map(fromApiOrder);
             }
-            if (name !== 'products') return arr;
+            if (name !== 'products') return arr; // danh mục: dùng nguyên dạng từ API
             if (arr[0]) { sampleRaw = arr[0]; console.info('[Bubu] Mẫu JSON từ ' + ENDPOINTS.products + ':', arr[0]); }
             return arr.map(fromApiProduct);
         },
+
+        // Thêm mới (không có id -> POST) hoặc cập nhật (có id -> PUT)
         save: async (name, item) => {
             if (!MOCK[name]) {
-                const conv = { products: toApiProduct, orders: toApiOrder }[name];
+                const conv = { products: toApiProduct, orders: toApiOrder }[name]; // hàm đổi giao diện -> API
                 const body = JSON.stringify(conv ? conv(item) : item);
                 return item.id
                     ? http(`${ENDPOINTS[name]}/${item.id}`, { method: 'PUT', body })
                     : http(ENDPOINTS[name], { method: 'POST', body });
             }
+            // Chế độ dữ liệu mẫu: ghi vào bộ nhớ db
             if (item.id) {
                 const i = db[name].findIndex((x) => x.id === item.id);
                 db[name][i] = { ...db[name][i], ...item };
@@ -300,24 +389,34 @@
             }
             return item;
         },
+
+        // Xóa theo id
         remove: async (name, id) => {
             if (!MOCK[name]) return http(`${ENDPOINTS[name]}/${id}`, { method: 'DELETE' });
             db[name] = db[name].filter((x) => x.id !== id);
         },
     };
 
-    /* ---------- Trạng thái ---------- */
+    /* =================================================================
+     * [6] TRẠNG THÁI & HẰNG SỐ GIAO DIỆN
+     * ================================================================= */
+
+    // Bộ lọc / trang hiện tại của từng màn hình (giữ lại khi chuyển qua lại giữa các màn)
     const state = {
         route: 'products',
         products: { q: '', cat: '', status: '', sort: 'new', page: 1 },
         categories: { q: '', page: 1 },
         orders: { q: '', status: '', page: 1 },
+        accounts: { q: '', status: '', page: 1 },
     };
-    let data = { products: [], categories: [], orders: [] };
 
+    // Dữ liệu đang hiển thị (nạp bởi reload())
+    let data = { products: [], categories: [], orders: [], details: [], accounts: [] };
+
+    // Nhãn + màu của trạng thái: [chữ hiển thị, class màu của thẻ .tag]
     const PRODUCT_STATUS = {
         active: ['Đang bán', 'ok'],
-        hidden: ['Đang ẩn', 'gray'],
+        hidden: ['Hết hàng', 'gray'],
         out: ['Hết hàng', 'bad'],
     };
     const ORDER_STATUS = {
@@ -328,19 +427,33 @@
         cancelled: ['Đã hủy', 'bad'],
         other: ['Khác', 'gray'],
     };
+
+    // --- Hàm tra cứu nhỏ dùng ở nhiều màn hình ---
+    const tag = (map, key) => `<span class="tag ${map[key][1]}">${map[key][0]}</span>`;
+    // Thẻ trạng thái đơn hàng; trạng thái lạ ('other') thì hiện nguyên chữ của backend
     const orderTag = (o) => (o.status === 'other' ? `<span class="tag gray">${esc(o.statusRaw || 'Khác')}</span>` : tag(ORDER_STATUS, o.status));
     const catName = (id) => (data.categories.find((c) => c.id === id) || {}).name || '—';
     const prodById = (id) => data.products.find((p) => p.id === id);
+    // Các biến thể (size / màu / số lượng) của một sản phẩm
+    const detailsOf = (pid) => data.details.filter((d) => d.productId === pid);
+    // Tồn kho của sản phẩm: có biến thể thì bằng tổng số lượng các biến thể, chưa có thì dùng tồn kho riêng của sản phẩm
+    const stockOf = (p) => { const ds = detailsOf(p.id); return ds.length ? ds.reduce((s, d) => s + (Number(d.quantity) || 0), 0) : p.stock; };
+    // Thông tin hiển thị của một dòng sản phẩm trong đơn (ưu tiên dữ liệu trong đơn, thiếu thì lấy từ sản phẩm)
     const itemInfo = (it) => {
         const p = prodById(it.productId) || {};
         return { name: it.name ?? p.name ?? '(không rõ)', price: it.price ?? p.price ?? 0, icon: p.icon };
     };
+    // Tổng tiền đơn: dùng số backend trả về; không có thì tự cộng từ các dòng
     const orderTotal = (o) => (o.total != null ? o.total : o.items.reduce((s, it) => s + itemInfo(it).price * it.qty, 0));
-    const tag = (map, key) => `<span class="tag ${map[key][1]}">${map[key][0]}</span>`;
 
+    // Tải lại toàn bộ dữ liệu từ API, gắn danh mục cho sản phẩm và cập nhật số đơn chờ xác nhận ở menu
     async function reload() {
-        const [products, categories, orders] = await Promise.all([api.list('products'), api.list('categories'), api.list('orders')]);
-        data = { products, categories, orders };
+        // Biến thể: nếu API chưa sẵn sàng thì tạm coi như rỗng để các màn hình khác vẫn chạy
+        const detailsReq = api.list('details').catch((e) => { console.warn('[Bubu] Không tải được biến thể:', e.message); return []; });
+        // Tài khoản: tương tự, API chưa sẵn sàng thì coi như rỗng
+        const accountsReq = api.list('accounts').catch((e) => { console.warn('[Bubu] Không tải được tài khoản:', e.message); return []; });
+        const [products, categories, orders, details, accounts] = await Promise.all([api.list('products'), api.list('categories'), api.list('orders'), detailsReq, accountsReq]);
+        data = { products, categories, orders, details, accounts };
         if (!MOCK.products) data.categories = linkCategories(products, categories);
         const pending = orders.filter((o) => o.status === 'pending').length;
         const b = $('#pendingBadge');
@@ -348,7 +461,11 @@
         b.classList.toggle('zero', pending === 0);
     }
 
-    /* ---------- Toast / Modal / Drawer ---------- */
+    /* =================================================================
+     * [7] THÀNH PHẦN GIAO DIỆN CHUNG
+     * ================================================================= */
+
+    /* ---------- Toast: thông báo nhỏ tự biến mất sau 2.8 giây ---------- */
     function toast(msg, type = 'ok') {
         const el = document.createElement('div');
         el.className = 'toast ' + type;
@@ -357,16 +474,21 @@
         setTimeout(() => el.remove(), 2800);
     }
 
+    /* ---------- Modal: hộp thoại giữa màn hình (form thêm/sửa, xác nhận xóa) ---------- */
     function openModal({ title, body, foot }) {
         $('#modalTitle').textContent = title;
         $('#modalBody').innerHTML = body;
         $('#modalFoot').innerHTML = foot || '';
+        // xóa các handler riêng của modal trước (ví dụ modal biến thể)
+        const mb = $('#modalBody');
+        mb.onclick = null; mb.onchange = null; mb.onkeydown = null;
         $('#modal').hidden = false;
         const first = $('#modalBody input, #modalBody select, #modalBody textarea');
-        if (first) first.focus();
+        if (first) first.focus(); // tự đặt con trỏ vào ô đầu tiên
     }
     const closeModal = () => ($('#modal').hidden = true);
 
+    /* ---------- Drawer: ngăn kéo bên phải (xem chi tiết) ---------- */
     function openDrawer({ title, body, foot }) {
         $('#drawerTitle').textContent = title;
         $('#drawerBody').innerHTML = body;
@@ -375,6 +497,8 @@
     }
     const closeDrawer = () => ($('#drawer').hidden = true);
 
+    /* ---------- Hộp xác nhận xóa (dùng chung cho cả 3 màn hình) ----------
+     * onYes là hàm async thực hiện việc xóa; lỗi sẽ hiện toast đỏ. */
     function confirmDelete(text, onYes) {
         openModal({
             title: 'Xác nhận xóa',
@@ -386,12 +510,14 @@
         };
     }
 
-    /* ---------- Danh sách + phân trang ---------- */
+    /* ---------- Phân trang ---------- */
+    // Cắt danh sách theo trang; tự kéo về trang cuối nếu trang hiện tại vượt quá
     function paginate(list, page) {
         const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
         const cur = Math.min(page, pages);
         return { rows: list.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE), cur, pages, total: list.length };
     }
+    // HTML thanh phân trang ("Hiển thị 1–8 / 20" + các nút số trang)
     function pagerHtml(p) {
         if (p.total === 0) return '';
         const from = (p.cur - 1) * PAGE_SIZE + 1;
@@ -401,17 +527,29 @@
         btns += `<button class="pg" data-page="${p.cur + 1}" ${p.cur === p.pages ? 'disabled' : ''}>›</button>`;
         return `<div class="pager"><span>Hiển thị ${from}–${to} / ${p.total}</span><div class="pager-btns">${btns}</div></div>`;
     }
-    const actionBtns = (id) => `
+
+    /* ---------- Các mảnh HTML dùng lại ---------- */
+    // Cụm 3 nút Xem / Sửa / Xóa ở cuối mỗi dòng (click được xử lý ở phần [12])
+    // extra: HTML nút bổ sung đặt trước 3 nút mặc định (ví dụ nút "Biến thể" ở bảng sản phẩm)
+    const actionBtns = (id, extra = '') => `
     <div class="actions">
+      ${extra}
       <button class="icon-btn view" data-act="view" data-id="${id}" title="Xem chi tiết">${ICON.view}</button>
       <button class="icon-btn edit" data-act="edit" data-id="${id}" title="Sửa">${ICON.edit}</button>
       <button class="icon-btn del" data-act="del" data-id="${id}" title="Xóa">${ICON.del}</button>
     </div>`;
+    // Khối "không có dữ liệu"
     const emptyHtml = (msg) => `<div class="empty"><div class="big">🔍</div><div>${msg}</div></div>`;
 
-    /* =========================================================
-     * SẢN PHẨM
-     * ========================================================= */
+    /* =================================================================
+     * [8] MÀN HÌNH SẢN PHẨM
+     *   renderProducts()     - khung trang: ô thống kê + thanh lọc
+     *   renderProductList()  - chỉ vẽ lại bảng (gọi khi gõ tìm / đổi lọc / đổi trang)
+     *   productForm()        - form thêm / sửa
+     *   productDetail()      - ngăn kéo xem chi tiết
+     * ================================================================= */
+
+    // Áp bộ lọc + sắp xếp hiện tại lên danh sách sản phẩm
     function filteredProducts() {
         const f = state.products;
         let list = data.products.filter((p) => {
@@ -425,19 +563,21 @@
             priceAsc: (a, b) => a.price - b.price,
             priceDesc: (a, b) => b.price - a.price,
             name: (a, b) => a.name.localeCompare(b.name, 'vi'),
-            stock: (a, b) => a.stock - b.stock,
+            stock: (a, b) => stockOf(a) - stockOf(b),
         };
         return list.sort(sorters[f.sort]);
     }
 
+    // Khung trang sản phẩm: 4 ô thống kê + thanh công cụ lọc; bảng được vẽ riêng ở renderProductList()
     function renderProducts() {
         const f = state.products;
         const all = data.products;
+        // [màu, icon, con số, nhãn]
         const stats = [
             ['c1', ICON.box, all.length, 'Tổng sản phẩm'],
             ['c2', ICON.check, all.filter((p) => p.status === 'active').length, 'Đang bán'],
-            ['c3', ICON.alert, all.filter((p) => p.stock > 0 && p.stock <= 10).length, 'Sắp hết hàng (≤ 10)'],
-            ['c4', ICON.alert, all.filter((p) => p.stock === 0).length, 'Hết hàng'],
+            ['c3', ICON.alert, all.filter((p) => stockOf(p) > 0 && stockOf(p) <= 10).length, 'Sắp hết hàng (≤ 10)'],
+            ['c4', ICON.cancel, all.filter((p) => stockOf(p) === 0).length, 'Hết hàng'],
         ];
         $('#content').innerHTML = `
       <div class="stats">${stats.map(([c, i, n, l]) => `<div class="stat"><div class="stat-ico ${c}">${i}</div><div><div class="stat-num">${n}</div><div class="stat-lbl">${l}</div></div></div>`).join('')}</div>
@@ -456,6 +596,7 @@
         </div>
         <div id="list"></div>
       </div>`;
+        // Gắn sự kiện lọc: đổi bộ lọc -> về trang 1 -> vẽ lại bảng
         $('#fQ').oninput = (e) => { f.q = e.target.value; f.page = 1; renderProductList(); };
         $('#fCat').onchange = (e) => { f.cat = e.target.value; f.page = 1; renderProductList(); };
         $('#fStatus').onchange = (e) => { f.status = e.target.value; f.page = 1; renderProductList(); };
@@ -464,6 +605,7 @@
         renderProductList();
     }
 
+    // Vẽ bảng sản phẩm + phân trang vào #list
     function renderProductList() {
         const p = paginate(filteredProducts(), state.products.page);
         state.products.page = p.cur;
@@ -473,9 +615,9 @@
           <div><div class="prod-name">${esc(x.name)}</div><div class="prod-sku">${esc(x.sku)}</div></div></div></td>
         <td><span class="chip">${esc(catName(x.categoryId))}</span></td>
         <td class="num price">${money(x.price)}</td>
-        <td class="num ${x.stock <= 10 ? 'low' : ''}">${x.stock}</td>
+        <td class="num ${stockOf(x) <= 10 ? 'low' : ''}">${stockOf(x)}</td>
         <td>${tag(PRODUCT_STATUS, x.status)}</td>
-        <td>${actionBtns(x.id)}</td>
+        <td>${actionBtns(x.id, `<button class="icon-btn" data-act="variants" data-id="${x.id}" title="Quản lý biến thể (size / màu)">${ICON.variants}</button>`)}</td>
       </tr>`).join('');
         $('#list').innerHTML = p.total === 0
             ? emptyHtml('Không tìm thấy sản phẩm phù hợp.')
@@ -484,16 +626,22 @@
           <tbody>${rows}</tbody></table></div>${pagerHtml(p)}`;
     }
 
+    // Form thêm (không truyền p) hoặc sửa (truyền sản phẩm) trong modal
     function productForm(p = {}) {
         const isEdit = !!p.id;
         openModal({
             title: isEdit ? 'Sửa sản phẩm' : 'Thêm sản phẩm',
             body: `<form id="pf" class="form-grid" novalidate>
-        <div class="field full"><label>Tên sản phẩm <em>*</em></label><input class="input" name="name" value="${esc(p.name)}" placeholder="VD: Cà phê sữa đá"><span class="err" data-err="name"></span></div>
-        <div class="field"><label>Mã SP</label><input class="input" name="sku" value="${esc(p.sku)}" placeholder="VD: DU-001"></div>
-        <div class="field"><label>Danh mục <em>*</em></label><select class="select" name="categoryId">${data.categories.map((c) => `<option value="${c.id}" ${c.id === p.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="field full"><label>Tên sản phẩm <em>*</em></label><input class="input" name="name" value="${esc(p.name)}" placeholder="VD: Nike"><span class="err" data-err="name"></span></div>
+        ${isEdit ? `
+            <div class="field">
+                <label>Mã SP</label>
+                <input class="input" name="sku" value="${esc(p.sku)}" readonly>
+            </div>
+        ` : ''}        
+        <div class="field"><label>Danh mục <em>*</em></label><select class="select" name="categoryId">${data.categories.map((c) => `<option value="${c.id}" ${c.id === p.categoryId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><span class="err" data-err="categoryId"></span></div>
         <div class="field"><label>Giá bán (₫) <em>*</em></label><input class="input" type="number" min="0" step="1000" name="price" value="${p.price ?? ''}"><span class="err" data-err="price"></span></div>
-        <div class="field"><label>Tồn kho</label><input class="input" type="number" min="0" name="stock" value="${p.stock ?? 0}"></div>
+     
         <div class="field"><label>Trạng thái</label><select class="select" name="status">${Object.entries(PRODUCT_STATUS).map(([k, v]) => `<option value="${k}" ${k === (p.status || 'active') ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
         <div class="field"><label>Biểu tượng (emoji)</label><input class="input" name="icon" value="${esc(p.icon || '📦')}" maxlength="4"></div>
         <div class="field full"><label>Link hình ảnh (không bắt buộc)</label><input class="input" name="image" value="${esc(p.image)}" placeholder="https://..."></div>
@@ -503,15 +651,16 @@
         });
         $('#saveBtn').onclick = async () => {
             const fd = Object.fromEntries(new FormData($('#pf')));
+            // Kiểm tra dữ liệu nhập
             $$('[data-err]').forEach((e) => (e.textContent = ''));
             let bad = false;
             if (!fd.name.trim()) { $('[data-err=name]').textContent = 'Vui lòng nhập tên sản phẩm'; bad = true; }
             if (fd.price === '' || Number(fd.price) < 0) { $('[data-err=price]').textContent = 'Giá không hợp lệ'; bad = true; }
+            if (!fd.categoryId) { $('[data-err=categoryId]').textContent = 'Vui lòng chọn danh mục (hãy tạo danh mục trước nếu chưa có)'; bad = true; }
             if (bad) return;
             const item = {
                 ...p,
                 name: fd.name.trim(),
-                sku: fd.sku.trim() || 'SP-' + String(db.nextId.products).padStart(3, '0'),
                 categoryId: Number(fd.categoryId) || undefined,
                 price: Number(fd.price),
                 stock: Number(fd.stock) || 0,
@@ -520,16 +669,19 @@
                 image: fd.image.trim(),
                 description: fd.description.trim(),
             };
+            const btn = $('#saveBtn');
+            btn.disabled = true; // chống bấm lưu 2 lần (tránh tạo trùng sản phẩm)
             try {
                 await api.save('products', item);
                 await reload();
                 closeModal();
                 render();
                 toast(isEdit ? 'Đã cập nhật sản phẩm' : 'Đã thêm sản phẩm mới');
-            } catch (e) { toast(e.message, 'bad'); }
+            } catch (e) { btn.disabled = false; toast(e.message, 'bad'); }
         };
     }
 
+    // Ngăn kéo xem chi tiết một sản phẩm
     function productDetail(id) {
         const p = prodById(id);
         if (!p) return;
@@ -543,19 +695,144 @@
         <dl class="kv">
           <dt>Mã sản phẩm</dt><dd>${esc(p.sku)}</dd>
           <dt>Danh mục</dt><dd>${esc(catName(p.categoryId))}</dd>
-          <dt>Tồn kho</dt><dd class="${p.stock <= 10 ? 'low' : ''}">${p.stock}</dd>
+          <dt>Tồn kho</dt><dd class="${stockOf(p) <= 10 ? 'low' : ''}">${stockOf(p)}</dd>
         </dl>
-        <div class="detail-desc">${esc(p.description) || '<i>Chưa có mô tả.</i>'}</div>`,
-            foot: `<button class="btn" data-close>Đóng</button><button class="btn btn-primary" id="dEdit">Sửa sản phẩm</button>`,
+        <div class="detail-desc">${esc(p.description) || '<i>Chưa có mô tả.</i>'}</div>
+        <h4 style="margin:18px 0 6px">Biến thể (${detailsOf(p.id).length})</h4>
+        ${detailsOf(p.id).length ? `<table class="items"><tbody>${detailsOf(p.id).map((d) => `<tr><td>Size ${esc(d.size)} · ${esc(d.color)}</td><td class="num">${esc(d.quantity)}</td></tr>`).join('')}</tbody></table>` : '<div style="color:var(--muted)">Chưa có biến thể.</div>'}`,
+            foot: `<button class="btn" data-close>Đóng</button><button class="btn" id="dVar">Quản lý biến thể</button><button class="btn btn-primary" id="dEdit">Sửa sản phẩm</button>`,
         });
+        $('#dVar').onclick = () => { closeDrawer(); variantManager(p.id); };
         $('#dEdit').onclick = () => { closeDrawer(); productForm(p); };
     }
 
-    /* =========================================================
-     * DANH MỤC
-     * ========================================================= */
+    /* ---------- [8.1] Biến thể sản phẩm (bảng ProductDetail: size / màu / số lượng) ----------
+     * Modal gồm 2 phần, không có thanh cuộn ngang:
+     *   1) Form "Thêm biến thể" ở trên cùng (Size, Màu, Số lượng, nút Thêm; Enter cũng thêm được)
+     *   2) Danh sách biến thể: mỗi biến thể một hàng = Size · Màu · ô số lượng · nút xóa.
+     *      Sửa số lượng trực tiếp trong ô, rời ô (hoặc Enter) là tự lưu.
+     * Sau mỗi thay đổi: tải lại dữ liệu, vẽ lại bảng sản phẩm phía sau (để tồn kho cập nhật)
+     * và vẽ lại chính modal này. */
+
+    // CSS riêng cho modal biến thể, chèn vào trang một lần duy nhất
+    function injectVariantStyle() {
+        if ($('#variantStyle')) return;
+        const s = document.createElement('style');
+        s.id = 'variantStyle';
+        s.textContent = `
+          .vm-add{display:grid;grid-template-columns:90px 1fr 110px auto;gap:8px;align-items:end;padding:12px;border:1px dashed var(--line,#d8d8d8);border-radius:10px;margin-bottom:14px}
+          .vm-add label{display:block;font-size:12px;color:var(--muted,#888);margin-bottom:4px}
+          .vm-add .input{width:100%;min-width:0;box-sizing:border-box}
+          .vm-sum{display:flex;justify-content:space-between;font-size:13px;color:var(--muted,#888);margin:0 2px 8px}
+          .vm-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;overflow-x:hidden}
+          .vm-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line,#e5e5e5);border-radius:10px}
+          .vm-size{flex:none;min-width:64px;font-weight:700}
+          .vm-color{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+          .vm-qty{flex:none;width:90px;box-sizing:border-box}
+          .vm-empty{padding:16px 0;text-align:center;color:var(--muted,#888)}
+          @media (max-width:520px){.vm-add{grid-template-columns:1fr 1fr}.vm-add button{grid-column:1/-1}}`;
+        document.head.appendChild(s);
+    }
+
+    function variantManager(productId) {
+        const p = prodById(productId);
+        if (!p) return;
+        injectVariantStyle();
+        const list = detailsOf(productId).sort((a, b) => a.size - b.size || String(a.color).localeCompare(String(b.color), 'vi'));
+
+        // Một hàng biến thể trong danh sách
+        const row = (d) => `
+          <div class="vm-row" data-vid="${d.id}">
+            <span class="vm-size">Size ${esc(d.size)}</span>
+            <span class="vm-color" title="${esc(d.color)}">${esc(d.color)}</span>
+            <input class="input vm-qty" type="number" min="0" step="1" data-qty value="${esc(d.quantity)}" title="Số lượng (rời ô là tự lưu)">
+            <button class="icon-btn del" data-vact="del" title="Xóa biến thể">${ICON.del}</button>
+          </div>`;
+
+        openModal({
+            title: 'Biến thể: ' + p.name,
+            body: `
+              <div class="vm-add">
+                <div><label>Size</label><input class="input" type="number" min="1" step="1" data-f="size" placeholder="VD: 40"></div>
+                <div><label>Màu</label><input class="input" data-f="color" maxlength="50" placeholder="VD: Đen"></div>
+                <div><label>Số lượng</label><input class="input" type="number" min="0" step="1" data-f="quantity" placeholder="VD: 10"></div>
+                <button class="btn btn-primary" data-vact="add">+ Thêm</button>
+              </div>
+              <div class="vm-sum"><span>${list.length} biến thể</span><span>Tổng tồn kho: <b>${stockOf(p)}</b></span></div>
+              <div class="vm-list">${list.length
+                ? list.map(row).join('')
+                : '<div class="vm-empty">Chưa có biến thể. Nhập size, màu, số lượng ở trên rồi bấm Thêm.</div>'}</div>`,
+            foot: `<button class="btn" data-close>Đóng</button>`,
+        });
+
+        const body = $('#modalBody');
+        const addVal = (f) => body.querySelector(`.vm-add [data-f=${f}]`).value.trim();
+        // Tải lại dữ liệu rồi vẽ lại: bảng sản phẩm phía sau (tồn kho) + chính modal này
+        const refresh = async () => { await reload(); render(); variantManager(productId); };
+
+        // Kiểm tra dữ liệu rồi lưu (vid = null là thêm mới). Trả về true nếu đã lưu.
+        const submit = async (vid, sizeStr, color, qtyStr) => {
+            const size = Number(sizeStr), quantity = Number(qtyStr);
+            if (sizeStr === '' || !Number.isInteger(size) || size <= 0) { toast('Size phải là số nguyên lớn hơn 0', 'bad'); return false; }
+            if (!color) { toast('Vui lòng nhập màu', 'bad'); return false; }
+            if (qtyStr === '' || !Number.isInteger(quantity) || quantity < 0) { toast('Số lượng phải là số nguyên từ 0 trở lên', 'bad'); return false; }
+            // Không cho trùng cặp size + màu trong cùng một sản phẩm
+            if (detailsOf(productId).some((d) => d.id !== vid && d.size === size && norm(d.color) === norm(color))) {
+                toast('Biến thể size ' + size + ' màu ' + color + ' đã tồn tại', 'bad');
+                return false;
+            }
+            await api.save('details', { ...(vid ? { id: vid } : {}), productId, size, color, quantity });
+            return true;
+        };
+
+        // Nút Thêm / Xóa
+        body.onclick = async (e) => {
+            const btn = e.target.closest('[data-vact]');
+            if (!btn) return;
+            try {
+                if (btn.dataset.vact === 'del') {
+                    if (!confirm('Xóa biến thể này?')) return;
+                    await api.remove('details', Number(btn.closest('.vm-row').dataset.vid));
+                    toast('Đã xóa biến thể');
+                } else {
+                    if (!(await submit(null, addVal('size'), addVal('color'), addVal('quantity')))) return;
+                    toast('Đã thêm biến thể');
+                }
+                await refresh();
+            } catch (err) { toast(err.message, 'bad'); }
+        };
+
+        // Sửa số lượng ngay trong ô: rời ô / Enter là tự lưu (lỗi thì vẽ lại để trả về số cũ)
+        body.onchange = async (e) => {
+            const inp = e.target.closest('[data-qty]');
+            if (!inp) return;
+            const vid = Number(inp.closest('.vm-row').dataset.vid);
+            const d = detailsOf(productId).find((x) => x.id === vid);
+            if (!d) return;
+            try {
+                if (await submit(vid, String(d.size), d.color, inp.value.trim())) toast('Đã cập nhật số lượng');
+                await refresh();
+            } catch (err) { toast(err.message, 'bad'); }
+        };
+
+        // Nhấn Enter trong form thêm = bấm nút Thêm
+        body.onkeydown = (e) => {
+            if (e.key === 'Enter' && e.target.closest('.vm-add')) {
+                e.preventDefault();
+                body.querySelector('[data-vact=add]').click();
+            }
+        };
+    }
+
+    /* =================================================================
+     * [9] MÀN HÌNH DANH MỤC
+     *   renderCategories() / renderCategoryList() / categoryForm() / categoryDetail()
+     * ================================================================= */
+
+    // Đếm số sản phẩm thuộc một danh mục
     const countIn = (cid) => data.products.filter((p) => p.categoryId === cid).length;
 
+    // Khung trang danh mục (thanh tìm kiếm); bảng vẽ ở renderCategoryList()
     function renderCategories() {
         const f = state.categories;
         $('#content').innerHTML = `
@@ -571,6 +848,7 @@
         renderCategoryList();
     }
 
+    // Vẽ bảng danh mục + phân trang vào #list
     function renderCategoryList() {
         const f = state.categories;
         const list = data.categories.filter((c) => !f.q || norm(c.name).includes(norm(f.q)) || norm(c.description).includes(norm(f.q)));
@@ -587,6 +865,7 @@
             <td>${actionBtns(c.id)}</td></tr>`).join('')}</tbody></table></div>${pagerHtml(p)}`;
     }
 
+    // Form thêm / sửa danh mục
     function categoryForm(c = {}) {
         const isEdit = !!c.id;
         openModal({
@@ -609,6 +888,7 @@
         };
     }
 
+    // Ngăn kéo xem chi tiết danh mục + danh sách sản phẩm bên trong
     function categoryDetail(id) {
         const c = data.categories.find((x) => x.id === id);
         if (!c) return;
@@ -626,17 +906,24 @@
         $('#dEdit').onclick = () => { closeDrawer(); categoryForm(c); };
     }
 
-    /* =========================================================
-     * ĐƠN HÀNG
-     * ========================================================= */
+    /* =================================================================
+     * [10] MÀN HÌNH ĐƠN HÀNG
+     *   renderOrders() / renderOrderList() / orderDetail() / orderForm()
+     *   (không có nút "Thêm": đơn hàng do khách đặt, admin chỉ xem / cập nhật / xóa)
+     * ================================================================= */
+
+    // Khung trang đơn hàng: 4 ô thống kê + thanh lọc
     function renderOrders() {
         const f = state.orders;
         const all = data.orders;
         const stats = [
             ['c1', ICON.cart, all.length, 'Tổng đơn hàng'],
             ['c3', ICON.alert, all.filter((o) => o.status === 'pending').length, 'Chờ xác nhận'],
-            ['c2', ICON.check, all.filter((o) => o.status === 'done').length, 'Hoàn thành'],
-            ['c1', ICON.box, money(all.filter((o) => o.status === 'done').reduce((s, o) => s + orderTotal(o), 0)), 'Doanh thu đã hoàn thành'],
+            ['c1', ICON.check, all.filter((o) => o.status === 'confirmed').length, 'Đã xác nhận'],
+            ['c1', ICON.shipping, all.filter((o) => o.status === 'shipping').length, 'Đang giao'],
+            ['c2', ICON.done, all.filter((o) => o.status === 'done').length, 'Hoàn thành'],
+            ['c4', ICON.cancel, all.filter((o) => o.status === 'cancelled').length, 'Đã hủy'],
+            ['c1', ICON.money, money(all.filter((o) => o.status === 'done').reduce((s, o) => s + orderTotal(o), 0)), 'Doanh thu đã hoàn thành'],
         ];
         $('#content').innerHTML = `
       <div class="stats">${stats.map(([c, i, n, l]) => `<div class="stat"><div class="stat-ico ${c}">${i}</div><div><div class="stat-num" ${String(n).length > 9 ? 'style="font-size:17px"' : ''}>${n}</div><div class="stat-lbl">${l}</div></div></div>`).join('')}</div>
@@ -654,6 +941,7 @@
         renderOrderList();
     }
 
+    // Vẽ bảng đơn hàng (mới nhất lên đầu) + phân trang vào #list
     function renderOrderList() {
         const f = state.orders;
         const q = norm(f.q);
@@ -675,38 +963,23 @@
             <td>${actionBtns(o.id)}</td></tr>`).join('')}</tbody></table></div>${pagerHtml(p)}`;
     }
 
-    function orderDetail(id) {
-        const o = data.orders.find((x) => x.id === id);
-        if (!o) return;
-        openDrawer({
-            title: 'Đơn ' + o.code,
-            body: `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <div class="detail-title" style="margin:0">${esc(o.customer)}</div>${orderTag(o)}
-        </div>
-        <dl class="kv">
-          <dt>Số điện thoại</dt><dd>${esc(o.phone)}</dd>
-          <dt>Địa chỉ</dt><dd>${esc(o.address)}</dd>
-          <dt>Ngày đặt</dt><dd>${fmtDateTime(o.date)}</dd>
-          <dt>Thanh toán</dt><dd>${esc(o.payment)}</dd>
-        </dl>
-        <h4 style="margin:6px 0">Sản phẩm</h4>
-        <table class="items"><tbody>${o.items.map((it) => { const p = itemInfo(it); return `<tr><td>${esc(p.icon || '📦')} ${esc(p.name)} <span style="color:var(--muted)">× ${it.qty}</span></td><td class="num price">${money(p.price * it.qty)}</td></tr>`; }).join('')}
-          <tr><td style="font-weight:700;border-top:1px solid var(--line)">Tổng cộng</td><td class="num price" style="color:var(--brand);font-size:16px;border-top:1px solid var(--line)">${money(orderTotal(o))}</td></tr></tbody></table>`,
-            foot: `<button class="btn" data-close>Đóng</button><button class="btn btn-primary" id="dEdit">Cập nhật trạng thái</button>`,
-        });
-        $('#dEdit').onclick = () => { closeDrawer(); orderForm(o); };
+    // Ngăn kéo xem chi tiết đơn: thông tin khách + từng sản phẩm + tổng cộng
+    async function orderDetail(id) {
+        const o = data.orders.find((x) => x.id === id); if (!o) return;
+    // Lấy chi tiết sản phẩm của đơn hàng
+        const res = await fetch(`/api/order-details/order/${id}`); if (!res.ok) { alert('Không thể lấy chi tiết đơn hàng'); return; } const items = await res.json(); openDrawer({ title: 'Đơn ' + o.code, body: ` <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"> <div class="detail-title" style="margin:0"> ${esc(o.customer)} </div> ${orderTag(o)} </div> <dl class="kv"> <dt>Số điện thoại</dt> <dd>${esc(o.phone)}</dd> <dt>Địa chỉ</dt> <dd>${esc(o.address)}</dd> <dt>Ngày đặt</dt> <dd>${fmtDateTime(o.date)}</dd> <dt>Thanh toán</dt> <dd>${esc(o.payment)}</dd> </dl> <h4 style="margin:6px 0">Sản phẩm</h4> <table class="items"> <tbody> ${items.map((it) => ` <tr> <td> ${it.imageUrl ? `<img src="${esc(it.imageUrl)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : '📦' } ${esc(it.productName)} <span style="color:var(--muted)"> × ${it.quantity} </span> <div style="font-size:12px;color:var(--muted)"> Size: ${it.size} | Màu: ${esc(it.color)} </div> </td> <td class="num price"> ${money(it.price * it.quantity)} </td> </tr> `).join('')} <tr> <td style="font-weight:700;border-top:1px solid var(--line)"> Tổng cộng </td> <td class="num price" style="color:var(--brand);font-size:16px;border-top:1px solid var(--line)" > ${money(o.totalAmount)} </td> </tr> </tbody> </table> `, foot: ` <button class="btn" data-close> Đóng </button> <button class="btn btn-primary" id="dEdit"> Cập nhật trạng thái </button> `, }); $('#dEdit').onclick = () => { closeDrawer(); orderForm(o); };
     }
 
+    // Form cập nhật đơn hàng (trạng thái + thông tin giao hàng)
     function orderForm(o) {
         openModal({
             title: 'Cập nhật đơn ' + o.code,
             body: `<form id="of" class="form-grid">
         <div class="field full"><label>Trạng thái đơn hàng</label><select class="select" name="status">${o.status === 'other' ? `<option value="other" selected>${esc(o.statusRaw)} (giữ nguyên)</option>` : ''}${Object.entries(ORDER_STATUS).filter(([k]) => k !== 'other').map(([k, v]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
-        <div class="field full"><label>Tên khách hàng</label><input class="input" name="customer" value="${esc(o.customer)}"></div>
-        <div class="field"><label>Số điện thoại</label><input class="input" name="phone" value="${esc(o.phone)}"></div>
-        <div class="field"><label>Thanh toán</label><input class="input" name="payment" value="${esc(o.payment)}"></div>
-        <div class="field full"><label>Địa chỉ giao hàng</label><input class="input" name="address" value="${esc(o.address)}"></div>
+        <div class="field full"><label>Tên khách hàng</label><input class="input" name="customer" value="${esc(o.customer)}" readonly></div>
+        <div class="field"><label>Số điện thoại</label><input class="input" name="phone" value="${esc(o.phone)}" readonly></div>
+        <div class="field"><label>Thanh toán</label><input class="input" name="payment" value="${esc(o.payment)}" readonly></div>
+        <div class="field full"><label>Địa chỉ giao hàng</label><input class="input" name="address" value="${esc(o.address)}" readonly></div>
       </form>`,
             foot: `<button class="btn" data-close>Hủy</button><button class="btn btn-primary" id="saveBtn">Lưu thay đổi</button>`,
         });
@@ -720,23 +993,202 @@
         };
     }
 
-    /* =========================================================
-     * ĐIỀU HƯỚNG + SỰ KIỆN CHUNG
-     * ========================================================= */
+    /* =================================================================
+     * [11] MÀN HÌNH TÀI KHOẢN (bảng tài khoản: Username / FullName / IsActive)
+     *   renderAccounts() / renderAccountList() / accountForm() / accountDetail() / toggleAccount()
+     *   - Khóa / mở khóa = đổi IsActive, không xóa dữ liệu.
+     *   - Mật khẩu không bao giờ được tải về hay hiển thị; chỉ gửi lên khi thêm mới
+     *     hoặc khi admin nhập mật khẩu mới ở form sửa (backend sẽ mã hóa).
+     * ================================================================= */
+
+    const ACCOUNT_STATUS = { active: ['Hoạt động', 'ok'], locked: ['Đã khóa', 'bad'] };
+    const accStatus = (a) => (a.active ? 'active' : 'locked');
+    const accById = (id) => data.accounts.find((a) => a.id === id);
+    const accName = (a) => a.fullName || a.username;
+    const accInitial = (a) => String(accName(a)).trim().charAt(0).toUpperCase() || '?'; // chữ cái đầu làm ảnh đại diện
+
+    // Áp bộ lọc hiện tại lên danh sách tài khoản (mới nhất lên đầu)
+    function filteredAccounts() {
+        const f = state.accounts;
+        const q = norm(f.q);
+        return data.accounts
+            .filter((a) => (!q || norm(a.username).includes(q) || norm(a.fullName).includes(q)) && (!f.status || accStatus(a) === f.status))
+            .sort((a, b) => b.id - a.id);
+    }
+
+    // Khung trang tài khoản: 3 ô thống kê + thanh lọc
+    function renderAccounts() {
+        const f = state.accounts;
+        const all = data.accounts;
+        const stats = [
+            ['c1', ICON.box, all.length, 'Tổng tài khoản'],
+            ['c2', ICON.check, all.filter((a) => a.active).length, 'Đang hoạt động'],
+            ['c4', ICON.alert, all.filter((a) => !a.active).length, 'Đã khóa'],
+        ];
+        $('#content').innerHTML = `
+      <div class="stats">${stats.map(([c, i, n, l]) => `<div class="stat"><div class="stat-ico ${c}">${i}</div><div><div class="stat-num">${n}</div><div class="stat-lbl">${l}</div></div></div>`).join('')}</div>
+      <div class="card">
+        <div class="toolbar">
+          <div class="search">${ICON.search}<input id="aQ" placeholder="Tìm theo tên đăng nhập hoặc họ tên..." value="${esc(f.q)}"></div>
+          <select class="select" id="aStatus"><option value="">Mọi trạng thái</option>${Object.entries(ACCOUNT_STATUS).map(([k, v]) => `<option value="${k}" ${k === f.status ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
+          <button class="btn" id="aReset">Xóa lọc</button>
+        </div>
+        <div id="list"></div>
+      </div>`;
+        $('#aQ').oninput = (e) => { f.q = e.target.value; f.page = 1; renderAccountList(); };
+        $('#aStatus').onchange = (e) => { f.status = e.target.value; f.page = 1; renderAccountList(); };
+        $('#aReset').onclick = () => { Object.assign(f, { q: '', status: '', page: 1 }); renderAccounts(); };
+        renderAccountList();
+    }
+
+    // Vẽ bảng tài khoản + phân trang vào #list (chỉ 3 cột nên không bị cuộn ngang)
+    function renderAccountList() {
+        const p = paginate(filteredAccounts(), state.accounts.page);
+        state.accounts.page = p.cur;
+        const rows = p.rows.map((a) => `
+      <tr>
+        <td><div class="prod"><div class="thumb">${esc(accInitial(a))}</div>
+          <div><div class="prod-name">${esc(a.username)}</div><div class="prod-sku">${esc(a.fullName || '—')}</div></div></div></td>
+        <td>${tag(ACCOUNT_STATUS, accStatus(a))}</td>
+        <td>${actionBtns(a.id, `<button class="icon-btn ${a.active ? 'del' : 'edit'}" data-act="toggle" data-id="${a.id}" title="${a.active ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}">${a.active ? ICON.lock : ICON.unlock}</button>`)}</td>
+      </tr>`).join('');
+        $('#list').innerHTML = p.total === 0
+            ? emptyHtml('Không tìm thấy tài khoản.')
+            : `<div class="table-wrap"><table>
+          <thead><tr><th>Tài khoản</th><th>Trạng thái</th><th class="num">Thao tác</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>${pagerHtml(p)}`;
+    }
+
+    // Form thêm (không truyền a) hoặc sửa (truyền tài khoản) trong modal
+    function accountForm(a = {}) {
+        const isEdit = !!a.id;
+        openModal({
+            title: isEdit ? 'Sửa tài khoản' : 'Thêm tài khoản',
+            body: `<form id="af" class="form-grid" novalidate autocomplete="off">
+        <div class="field full"><label>Tên đăng nhập ${isEdit ? '' : '<em>*</em>'}</label><input class="input" name="username" value="${esc(a.username)}" maxlength="50" placeholder="VD: nguyenvana" ${isEdit ? 'readonly title="Không đổi được tên đăng nhập"' : ''}><span class="err" data-err="username"></span></div>
+        <div class="field full"><label>Họ tên</label><input class="input" name="fullName" value="${esc(a.fullName)}" maxlength="100"></div>
+        <div class="field full"><label>${isEdit ? 'Mật khẩu mới (bỏ trống nếu không đổi)' : 'Mật khẩu <em>*</em>'}</label><input class="input" type="password" name="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự"><span class="err" data-err="password"></span></div>
+        <div class="field full"><label>Trạng thái</label><select class="select" name="active">
+          <option value="true" ${a.active !== false ? 'selected' : ''}>Hoạt động</option>
+          <option value="false" ${a.active === false ? 'selected' : ''}>Đã khóa</option>
+        </select></div>
+      </form>`,
+            foot: `<button class="btn" data-close>Hủy</button><button class="btn btn-primary" id="saveBtn">${isEdit ? 'Lưu thay đổi' : 'Thêm tài khoản'}</button>`,
+        });
+        $('#saveBtn').onclick = async () => {
+            const fd = Object.fromEntries(new FormData($('#af')));
+            $$('[data-err]').forEach((e) => (e.textContent = ''));
+            const username = (fd.username || '').trim();
+            const password = fd.password || '';
+            let bad = false;
+            if (!isEdit && !/^[A-Za-z0-9._@-]{3,50}$/.test(username)) { $('[data-err=username]').textContent = 'Từ 3–50 ký tự: chữ không dấu, số, . _ @ -'; bad = true; }
+            if ((!isEdit || password) && password.length < 6) { $('[data-err=password]').textContent = 'Mật khẩu tối thiểu 6 ký tự'; bad = true; }
+            if (bad) return;
+            const item = { ...a, username, fullName: (fd.fullName || '').trim(), active: fd.active === 'true' };
+            if (password) item.password = password; // chỉ gửi mật khẩu khi có nhập
+            const btn = $('#saveBtn');
+            btn.disabled = true; // chống bấm lưu 2 lần
+            try {
+                await api.save('accounts', item);
+                await reload(); closeModal(); render();
+                toast(isEdit ? 'Đã cập nhật tài khoản' : 'Đã thêm tài khoản mới');
+            } catch (e) { btn.disabled = false; toast(e.message, 'bad'); }
+        };
+    }
+
+    // Ngăn kéo xem chi tiết tài khoản
+    function accountDetail(id) {
+        const a = accById(id);
+        if (!a) return;
+        openDrawer({
+            title: 'Chi tiết tài khoản',
+            body: `
+        <div class="detail-hero" style="height:120px;font-size:56px">${esc(accInitial(a))}</div>
+        <div class="detail-title">${esc(accName(a))}</div>
+        <div>${tag(ACCOUNT_STATUS, accStatus(a))}</div>
+        <dl class="kv" style="margin-top:14px">
+          <dt>Tên đăng nhập</dt><dd>${esc(a.username)}</dd>
+          <dt>Họ tên</dt><dd>${esc(a.fullName) || '—'}</dd>
+          <dt>Mật khẩu</dt><dd>•••••• (được mã hóa, không xem được)</dd>
+        </dl>`,
+            foot: `<button class="btn" data-close>Đóng</button><button class="btn" id="dToggle">${a.active ? 'Khóa tài khoản' : 'Mở khóa'}</button><button class="btn btn-primary" id="dEdit">Sửa tài khoản</button>`,
+        });
+        $('#dToggle').onclick = () => { closeDrawer(); toggleAccount(id); };
+        $('#dEdit').onclick = () => { closeDrawer(); accountForm(a); };
+    }
+
+    // Khóa / mở khóa: đổi IsActive (khóa thì hỏi lại để tránh bấm nhầm)
+    async function toggleAccount(id) {
+        const a = accById(id);
+        if (!a) return;
+        if (a.active && !confirm(`Khóa tài khoản "${a.username}"? Người này sẽ không đăng nhập được nữa.`)) return;
+        try {
+            await api.save('accounts', { ...a, active: !a.active });
+            await reload(); render();
+            toast(a.active ? 'Đã khóa tài khoản' : 'Đã mở khóa tài khoản');
+        } catch (e) { toast(e.message, 'bad'); }
+    }
+
+    /* =================================================================
+     * [12] ĐIỀU HƯỚNG + SỰ KIỆN CHUNG + KHỞI ĐỘNG
+     * ================================================================= */
+
+    /* ---------- Bảng các màn hình ----------
+     * Mỗi màn hình khai báo: tiêu đề, nhãn nút "Thêm", hàm vẽ và các hành động
+     * form / view / edit / del. Muốn thêm một màn hình mới, thêm một mục vào đây
+     * (và thêm state, link menu tương ứng). */
     const ROUTES = {
-        products: { title: 'Quản lý sản phẩm', crumb: 'Sản phẩm', add: 'Thêm sản phẩm', render: renderProducts, form: () => productForm(), view: productDetail, edit: (id) => productForm(prodById(id)),
-            del: (id) => { const p = prodById(id); confirmDelete(`Bạn có chắc muốn xóa sản phẩm <b>${esc(p.name)}</b>?`, async () => { await api.remove('products', id); await reload(); render(); toast('Đã xóa sản phẩm'); }); } },
-        categories: { title: 'Quản lý danh mục', crumb: 'Danh mục', add: 'Thêm danh mục', render: renderCategories, form: () => categoryForm(), view: categoryDetail, edit: (id) => categoryForm(data.categories.find((c) => c.id === id)),
+        products: {
+            title: 'Quản lý sản phẩm', crumb: 'Sản phẩm', add: 'Thêm sản phẩm',
+            render: renderProducts,
+            form: () => productForm(),
+            view: productDetail,
+            variants: variantManager, // nút "Biến thể" ở mỗi dòng sản phẩm
+            edit: (id) => productForm(prodById(id)),
+            del: (id) => {
+                const p = prodById(id);
+                confirmDelete(`Bạn có chắc muốn xóa sản phẩm <b>${esc(p.name)}</b>?`, async () => { await api.remove('products', id); await reload(); render(); toast('Đã xóa sản phẩm'); });
+            },
+        },
+        categories: {
+            title: 'Quản lý danh mục', crumb: 'Danh mục', add: 'Thêm danh mục',
+            render: renderCategories,
+            form: () => categoryForm(),
+            view: categoryDetail,
+            edit: (id) => categoryForm(data.categories.find((c) => c.id === id)),
             del: (id) => {
                 const c = data.categories.find((x) => x.id === id);
                 const n = countIn(id);
+                // Không cho xóa danh mục còn sản phẩm
                 if (n > 0) return toast(`Danh mục "${c.name}" còn ${n} sản phẩm, hãy chuyển hoặc xóa sản phẩm trước.`, 'bad');
                 confirmDelete(`Bạn có chắc muốn xóa danh mục <b>${esc(c.name)}</b>?`, async () => { await api.remove('categories', id); await reload(); render(); toast('Đã xóa danh mục'); });
-            } },
-        orders: { title: 'Quản lý đơn hàng', crumb: 'Đơn hàng', add: null, render: renderOrders, view: orderDetail, edit: (id) => orderForm(data.orders.find((o) => o.id === id)),
-            del: (id) => { const o = data.orders.find((x) => x.id === id); confirmDelete(`Bạn có chắc muốn xóa đơn <b>${esc(o.code)}</b> của ${esc(o.customer)}?`, async () => { await api.remove('orders', id); await reload(); render(); toast('Đã xóa đơn hàng'); }); } },
+            },
+        },
+        accounts: {
+            title: 'Quản lý tài khoản', crumb: 'Tài khoản', add: 'Thêm tài khoản',
+            render: renderAccounts,
+            form: () => accountForm(),
+            view: accountDetail,
+            edit: (id) => accountForm(accById(id)),
+            toggle: toggleAccount, // nút khóa / mở khóa ở mỗi dòng
+            del: (id) => {
+                const a = accById(id);
+                confirmDelete(`Bạn có chắc muốn xóa tài khoản <b>${esc(a.username)}</b>? Nếu chỉ muốn ngăn đăng nhập, hãy dùng "Khóa tài khoản" thay vì xóa.`, async () => { await api.remove('accounts', id); await reload(); render(); toast('Đã xóa tài khoản'); });
+            },
+        },
+        orders: {
+            title: 'Quản lý đơn hàng', crumb: 'Đơn hàng', add: null, // add: null = ẩn nút "Thêm"
+            render: renderOrders,
+            view: orderDetail,
+            edit: (id) => orderForm(data.orders.find((o) => o.id === id)),
+            del: (id) => {
+                const o = data.orders.find((x) => x.id === id);
+                confirmDelete(`Bạn có chắc muốn xóa đơn <b>${esc(o.code)}</b> của ${esc(o.customer)}?`, async () => { await api.remove('orders', id); await reload(); render(); toast('Đã xóa đơn hàng'); });
+            },
+        },
     };
 
+    // Vẽ lại màn hình hiện tại: cập nhật tiêu đề, breadcrumb, nút Thêm, menu đang chọn rồi gọi hàm vẽ nội dung
     function render() {
         const r = ROUTES[state.route];
         $('#pageTitle').textContent = r.title;
@@ -747,6 +1199,7 @@
         r.render();
     }
 
+    // Đọc đường dẫn (#/products, #/categories, #/orders) để biết đang ở màn hình nào; sai thì về sản phẩm
     function route() {
         const name = (location.hash.replace('#/', '') || 'products').split('?')[0];
         state.route = ROUTES[name] ? name : 'products';
@@ -754,19 +1207,28 @@
         render();
     }
 
+    // Đóng menu bên trái (chế độ điện thoại)
     const closeSidebar = () => { $('#sidebar').classList.remove('open'); $('#backdrop').classList.remove('show'); };
 
+    /* ---------- Bắt click toàn trang (event delegation) ----------
+     * Chỉ một listener duy nhất xử lý: đóng modal/drawer, đổi trang,
+     * và nút Xem / Sửa / Xóa ở mọi bảng (dựa vào data-act, data-id). */
     document.addEventListener('click', (e) => {
         const t = e.target;
-        if (t.closest('[data-close]') || t.id === 'modal') closeModal();
-        if (t.closest('[data-close]') && t.closest('#drawer') || t.id === 'drawer') closeDrawer();
 
+        // Đóng modal: bấm nút [data-close] hoặc bấm nền tối bên ngoài
+        if (t.closest('[data-close]') || t.id === 'modal') closeModal();
+        // Đóng drawer: bấm nút [data-close] nằm trong drawer hoặc bấm nền tối bên ngoài
+        if ((t.closest('[data-close]') && t.closest('#drawer')) || t.id === 'drawer') closeDrawer();
+
+        // Chuyển trang ở bảng
         const pg = t.closest('[data-page]');
         if (pg && !pg.disabled) {
             state[state.route].page = Number(pg.dataset.page);
-            ({ products: renderProductList, categories: renderCategoryList, orders: renderOrderList })[state.route]();
+            ({ products: renderProductList, categories: renderCategoryList, orders: renderOrderList, accounts: renderAccountList })[state.route]();
         }
 
+        // Nút Xem / Sửa / Xóa: id số thì đổi sang số, id chuỗi (UUID...) giữ nguyên
         const act = t.closest('[data-act]');
         if (act) {
             const r = ROUTES[state.route];
@@ -775,18 +1237,23 @@
             if (act.dataset.act === 'view') r.view(id);
             if (act.dataset.act === 'edit') r.edit(id);
             if (act.dataset.act === 'del') r.del(id);
+            if (act.dataset.act === 'variants' && r.variants) r.variants(id);
+            if (act.dataset.act === 'toggle' && r.toggle) r.toggle(id);
         }
     });
 
+    // Phím Esc đóng modal và drawer
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') { closeModal(); closeDrawer(); }
     });
 
+    // Nút "Thêm ..." trên thanh tiêu đề, nút mở menu (điện thoại), nền tối của menu, đổi đường dẫn
     $('#addBtn').onclick = () => ROUTES[state.route].form && ROUTES[state.route].form();
     $('#menuToggle').onclick = () => { $('#sidebar').classList.add('open'); $('#backdrop').classList.add('show'); };
     $('#backdrop').onclick = closeSidebar;
     window.addEventListener('hashchange', route);
 
+    /* ---------- KHỞI ĐỘNG: tải dữ liệu rồi hiển thị màn hình; lỗi thì báo rõ lý do ---------- */
     reload().then(route).catch((e) => {
         $('#content').innerHTML = emptyHtml('Không tải được dữ liệu (' + esc(e.message) + '). Kiểm tra backend đang chạy và đường dẫn ' + esc(ENDPOINTS.products) + ' trả về JSON.');
     });

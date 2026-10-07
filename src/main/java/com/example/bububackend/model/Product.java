@@ -1,18 +1,47 @@
 package com.example.bububackend.model;
 
+import jakarta.persistence.*;
+
 import java.math.BigDecimal;
 
+@Entity
+@Table(name = "Product")
 public class Product {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "`Id`")
     private int id;
+
+    @Column(name = "`Code`")
     private String code;
+
+    @Column(name = "`Name`")
     private String name;
+
+    @Column(name = "`Price`")
     private BigDecimal price;
+
+    @Column(name = "`Description`")
     private String description;
+
+    @Column(name = "`ImageUrl`")
     private String imageUrl;
+
+    @Column(name = "`CategoryId`")
     private int categoryId;
-    private String categoryName;   // chi dung de hien thi
-    private int status;            // 1 = Hoat dong, 0 = Ngung ban
-    private int totalQuantity;     // tong ton kho cac size/mau, chi dung de hien thi
+
+    // Chỉ dùng để hiển thị, không lưu vào DB
+    @Transient
+    private String categoryName;
+
+    @Column(name = "`Status`")
+    private int status;
+
+    // Chỉ dùng để hiển thị, không lưu vào DB
+    @Transient
+    private int totalQuantity;
+
 
     public int getId() {
         return id;

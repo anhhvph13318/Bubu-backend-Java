@@ -1,1 +1,11 @@
-GET http://localhost:8080/api/products/1
+#PUT http://localhost:8080/api/accounts/1
+#Content-Type: application/json
+#
+#{
+#  "userName": "admin",
+#  "fullName": "Quan tri vien",
+#  "passwordHash": "123",
+#  "active": true
+#}
+
+GET http://localhost:8080/api/order-details/order/1

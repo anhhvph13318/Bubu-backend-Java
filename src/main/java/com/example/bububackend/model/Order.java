@@ -1,28 +1,49 @@
 package com.example.bububackend.model;
 
+import jakarta.persistence.*;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@Entity
+@Table(name = "Orders")
 public class Order {
-    public int id;
-    public String ordercode;
-    public String customerName;
-    public String phone;
-    public String Address;
-    public String Note;
-    public BigDecimal TotalAmount;
-    public int paymentMethod;
-    public int paymentStatus;
-    public int status;
-    public LocalDateTime createdAt;
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "`Id`")
+    private int id;
 
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
+    @Column(name = "`OrderCode`")
+    private String orderCode;
+
+    @Column(name = "`CustomerName`")
+    private String customerName;
+
+    @Column(name = "`Phone`")
+    private String phone;
+
+    @Column(name = "`Address`")
+    private String address;
+
+    @Column(name = "`Note`")
+    private String note;
+
+    @Column(name = "`TotalAmount`")
+    private BigDecimal totalAmount;
+
+    @Column(name = "`PaymentMethod`")
+    private int paymentMethod;
+
+    @Column(name = "`PaymentStatus`")
+    private int paymentStatus;
+
+    @Column(name = "`Status`")
+    private int status;
+
+    @Column(name = "`CreatedAt`")
+    private LocalDateTime createdAt;
+
 
     public int getId() {
         return id;
@@ -32,12 +53,12 @@ public class Order {
         this.id = id;
     }
 
-    public String getOrdercode() {
-        return ordercode;
+    public String getOrderCode() {
+        return orderCode;
     }
 
-    public void setOrdercode(String ordercode) {
-        this.ordercode = ordercode;
+    public void setOrderCode(String orderCode) {
+        this.orderCode = orderCode;
     }
 
     public String getCustomerName() {
@@ -57,27 +78,27 @@ public class Order {
     }
 
     public String getAddress() {
-        return Address;
+        return address;
     }
 
     public void setAddress(String address) {
-        Address = address;
+        this.address = address;
     }
 
     public String getNote() {
-        return Note;
+        return note;
     }
 
     public void setNote(String note) {
-        Note = note;
+        this.note = note;
     }
 
     public BigDecimal getTotalAmount() {
-        return TotalAmount;
+        return totalAmount;
     }
 
     public void setTotalAmount(BigDecimal totalAmount) {
-        TotalAmount = totalAmount;
+        this.totalAmount = totalAmount;
     }
 
     public int getPaymentMethod() {
@@ -102,5 +123,13 @@ public class Order {
 
     public void setStatus(int status) {
         this.status = status;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 }

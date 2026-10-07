@@ -1,12 +1,9 @@
 package com.example.bububackend.controller;
 
+import com.example.bububackend.DTO.UpdateOrderStatusDTO;
 import com.example.bububackend.model.Order;
-import com.example.bububackend.model.Product;
 import com.example.bububackend.service.OrderService;
-import com.example.bububackend.service.ProductService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -23,5 +20,10 @@ public class OrderController {
     @GetMapping
     public List<Order> getAlOrders() {
         return orderService.getAllOrders();
+    }
+
+    @PutMapping("/{id}")
+    public Order updateStatus(@PathVariable int id) {
+        return orderService.updateStatus(id);
     }
 }
