@@ -21,9 +21,7 @@ public class AccountService {
         this.repository = repository;
     }
 
-    public List<Account> findAll() {
-        return repository.findAll();
-    }
+    public List<Account> findAll() { return repository.findAll(); }
 
     public Account createAccount(AccountRequest req) {
         String username = req.getUsername() == null ? "" : req.getUsername().trim();

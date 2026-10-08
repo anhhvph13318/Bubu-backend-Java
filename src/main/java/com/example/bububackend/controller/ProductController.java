@@ -2,6 +2,7 @@ package com.example.bububackend.controller;
 
 import com.example.bububackend.DTO.ProductDetailResponseDTO;
 import com.example.bububackend.model.Product;
+import com.example.bububackend.response.ApiResponse;
 import com.example.bububackend.service.ProductService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,34 +29,158 @@ public class ProductController {
 
     // GET /api/products - lấy tất cả sản phẩm
     @GetMapping
-    public List<Product> getAllProducts() {
+    public ResponseEntity<ApiResponse<List<Product>>> getAllProducts() {
+        try {
+            List<Product> products = productService.getAllProducts();
 
-        return productService.getAllProducts();
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            products,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // GET /api/products/{id} - lấy một sản phẩm
     @GetMapping("/{id}")
-    public ProductDetailResponseDTO getProductById(@PathVariable int id) {
-        return productService.getProductById(id);
+    public ResponseEntity<ApiResponse<ProductDetailResponseDTO>> getProductById(
+            @PathVariable int id) {
+
+        try {
+            ProductDetailResponseDTO product =
+                    productService.getProductById(id);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            product,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // POST /api/products - thêm sản phẩm mới (trả về 201 + sản phẩm vừa tạo)
     @PostMapping
-    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
-        Product created = productService.createProduct(product);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    public ResponseEntity<ApiResponse<Product>> createProduct(
+            @RequestBody Product product) {
+
+        try {
+            Product created = productService.createProduct(product);
+
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(
+                            new ApiResponse<>(
+                                    created,
+                                    true,
+                                    null,
+                                    null
+                            )
+                    );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // PUT /api/products/{id} - cập nhật sản phẩm
     @PutMapping("/{id}")
-    public Product updateProduct(@PathVariable int id, @RequestBody Product product) {
-        return productService.updateProduct(id, product);
+    public ResponseEntity<ApiResponse<Product>> updateProduct(
+            @PathVariable int id,
+            @RequestBody Product product) {
+
+        try {
+            Product updated = productService.updateProduct(id, product);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            updated,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // DELETE /api/products/{id} - xóa sản phẩm (trả về 204, không có nội dung)
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable int id) {
-        productService.deleteProduct(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<ApiResponse<Void>> deleteProduct(
+            @PathVariable int id) {
+
+        try {
+            productService.deleteProduct(id);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            null,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 }

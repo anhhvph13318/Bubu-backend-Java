@@ -2,12 +2,14 @@ package com.example.bububackend.controller;
 
 import com.example.bububackend.model.Account;
 import com.example.bububackend.model.AccountRequest;
+import com.example.bububackend.response.ApiResponse;
 import com.example.bububackend.service.AccountService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/accounts")
@@ -18,21 +20,117 @@ public class AccountController {
     }
 
     @GetMapping
-    public List<Account> findAll() {
-        return accountService.findAll();
-    }
+    public ResponseEntity<ApiResponse<List<Account>>> findAll() {
+        try {
+            List<Account> accounts = accountService.findAll();
 
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            accounts,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
+    }
     @PostMapping
-    public ResponseEntity<Account> createAccount(@RequestBody AccountRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(accountService.createAccount(request));
+    public ResponseEntity<ApiResponse<Account>> createAccount(@RequestBody AccountRequest request) {
+
+        try {
+            Account account = accountService.createAccount(request);
+
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(
+                            new ApiResponse<>(
+                                    account,
+                                    true,
+                                    null,
+                                    null
+                            )
+                    );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
     @PutMapping("/{id}")
-    public Account updateAccount(@PathVariable int id, @RequestBody AccountRequest request) {
-        return accountService.edit(id, request);
+    public ResponseEntity<ApiResponse<Account>> updateAccount(@PathVariable int id, @RequestBody AccountRequest request) {
+
+        try {
+            Account account = accountService.edit(id, request);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            account,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteAccount(@PathVariable int id) {
-        accountService.deleteAccount(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<ApiResponse<Void>> deleteAccount(@PathVariable int id) {
+
+        try {
+            accountService.deleteAccount(id);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            null,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 }

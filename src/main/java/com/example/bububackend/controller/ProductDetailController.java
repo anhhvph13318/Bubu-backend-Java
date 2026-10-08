@@ -1,6 +1,7 @@
 package com.example.bububackend.controller;
 
 import com.example.bububackend.model.ProductDetail;
+import com.example.bububackend.response.ApiResponse;
 import com.example.bububackend.service.ProductDetailService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,26 +30,128 @@ public class ProductDetailController {
     // GET /api/product-details            - tất cả biến thể
     // GET /api/product-details?productId=5 - biến thể của sản phẩm 5
     @GetMapping
-    public List<ProductDetail> getDetails(@RequestParam(required = false) Integer productId) {
-        return service.getDetails(productId);
+    public ResponseEntity<ApiResponse<List<ProductDetail>>> getDetails(
+            @RequestParam(required = false) Integer productId) {
+
+        try {
+            List<ProductDetail> details = service.getDetails(productId);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            details,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // POST /api/product-details - thêm biến thể (trả về 201)
     @PostMapping
-    public ResponseEntity<ProductDetail> createDetail(@RequestBody ProductDetail detail) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.createDetail(detail));
+    public ResponseEntity<ApiResponse<ProductDetail>> createDetail(
+            @RequestBody ProductDetail detail) {
+
+        try {
+            ProductDetail created = service.createDetail(detail);
+
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(
+                            new ApiResponse<>(
+                                    created,
+                                    true,
+                                    null,
+                                    null
+                            )
+                    );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // PUT /api/product-details/{id} - cập nhật biến thể
     @PutMapping("/{id}")
-    public ProductDetail updateDetail(@PathVariable int id, @RequestBody ProductDetail detail) {
-        return service.updateDetail(id, detail);
+    public ResponseEntity<ApiResponse<ProductDetail>> updateDetail(
+            @PathVariable int id,
+            @RequestBody ProductDetail detail) {
+
+        try {
+            ProductDetail updated = service.updateDetail(id, detail);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            updated,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // DELETE /api/product-details/{id} - xóa biến thể (trả về 204)
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteDetail(@PathVariable int id) {
-        service.deleteDetail(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<ApiResponse<Void>> deleteDetail(
+            @PathVariable int id) {
+
+        try {
+            service.deleteDetail(id);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            null,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 }
