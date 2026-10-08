@@ -48,6 +48,22 @@ public class ProductService {
 
             List<ProductDetail> details =
                     productDetailRepository.findByProductId(product.getId());
+            List<Image> images =
+                    imageRepository.findByProductIdOrderBySortOrderAscIdAsc(product.getId());
+            if (images.size() > 0) {
+                List<ImageInfo> imageInfos = images.stream()
+                        .map(image -> new ImageInfo(
+                                image.getId(),
+                                image.getProductId(),
+                                image.getFileName(),
+                                "/api/images/" + image.getId() + "/file",
+                                image.isMain(),
+                                image.getSortOrder(),
+                                image.getVersion()
+                        ))
+                        .filter(ImageInfo::main).toList();
+                product.setImageUrl(imageInfos.getFirst().imageUrl());
+            }
 
             int total = 0;
 
@@ -56,6 +72,7 @@ public class ProductService {
             }
 
             product.setTotalQuantity(total);
+
         }
 
         return products;

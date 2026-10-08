@@ -16,4 +16,4 @@
 #  "password": "123456"
 #}
 
-GET http://localhost:8080/api/products/1008
+GET http://localhost:8080/api/products

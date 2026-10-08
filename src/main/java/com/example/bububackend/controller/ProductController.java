@@ -29,6 +29,7 @@ public class ProductController {
     // GET /api/products - lấy tất cả sản phẩm
     @GetMapping
     public List<Product> getAllProducts() {
+
         return productService.getAllProducts();
     }
 
