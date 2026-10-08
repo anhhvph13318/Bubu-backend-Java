@@ -16,10 +16,12 @@ public class AccountController {
     public AccountController(AccountService accountService) {
         this.accountService = accountService;
     }
+
     @GetMapping
     public List<Account> findAll() {
         return accountService.findAll();
     }
+
     @PostMapping
     public ResponseEntity<Account> createAccount(@RequestBody AccountRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(accountService.createAccount(request));
