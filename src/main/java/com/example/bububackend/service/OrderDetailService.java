@@ -1,12 +1,8 @@
 package com.example.bububackend.service;
 
 import com.example.bububackend.DTO.OrderDetailDTO;
-import com.example.bububackend.model.OrderDetail;
-import com.example.bububackend.model.Product;
-import com.example.bububackend.model.ProductDetail;
-import com.example.bububackend.repository.OrderDetailRepository;
-import com.example.bububackend.repository.ProductDetailRepository;
-import com.example.bububackend.repository.ProductRepository;
+import com.example.bububackend.model.*;
+import com.example.bububackend.repository.*;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -18,15 +14,21 @@ public class OrderDetailService {
     private final OrderDetailRepository orderDetailRepository;
     private final ProductDetailRepository productDetailRepository;
     private final ProductRepository productRepository;
+    private final SizeRepository sizeRepository;
+    private final ColorRepository colorRepository;
 
     public OrderDetailService(
             OrderDetailRepository orderDetailRepository,
             ProductDetailRepository productDetailRepository,
-            ProductRepository productRepository) {
+            ProductRepository productRepository,
+            SizeRepository sizeRepository,
+            ColorRepository colorRepository) {
 
         this.orderDetailRepository = orderDetailRepository;
         this.productDetailRepository = productDetailRepository;
         this.productRepository = productRepository;
+        this.sizeRepository = sizeRepository;
+        this.colorRepository = colorRepository;
     }
 
     public List<OrderDetailDTO> getOrderDetailsByOrderId(int orderId) {
@@ -61,8 +63,14 @@ public class OrderDetailService {
             dto.setProductDetailId(productDetail.getId());
             dto.setProductId(product.getId());
             dto.setProductName(product.getName());
-            dto.setSize(productDetail.getSize());
-            dto.setColor(productDetail.getColor());
+            Size size = sizeRepository.findById(productDetail.getSizeId()).orElse(null);
+            Color color = colorRepository.findById(productDetail.getColorId()).orElse(null);
+
+            dto.setSizeId(productDetail.getSizeId());
+            dto.setSize(size != null ? size.getName() : "");
+
+            dto.setColorId(productDetail.getColorId());
+            dto.setColor(color != null ? color.getName() : "");
             dto.setQuantity(orderDetail.getQuantity());
             dto.setPrice(orderDetail.getPrice());
             dto.setImageUrl(product.getImageUrl());

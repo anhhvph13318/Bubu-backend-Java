@@ -118,4 +118,46 @@ public class AccountService {
     private ResponseStatusException bad(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
+
+    // Đăng nhập
+    public Account login(String username, String password) {
+
+        if (username == null || username.trim().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Tên đăng nhập không được để trống"
+            );
+        }
+
+        if (password == null || password.isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Mật khẩu không được để trống"
+            );
+        }
+
+        Account account = repository.findByUserName(username.trim())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "Tên đăng nhập hoặc mật khẩu không đúng"
+                ));
+
+        if (!account.isActive()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Tài khoản đã bị khóa"
+            );
+        }
+
+        String passwordHash = hashPassword(password);
+
+        if (!passwordHash.equals(account.getPasswordHash())) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Tên đăng nhập hoặc mật khẩu không đúng"
+            );
+        }
+
+        return account;
+    }
 }

@@ -7,7 +7,10 @@ public class OrderDetailDTO {
     private int productDetailId;
     private int productId;
     private String productName;
-    private int size;
+    private int sizeId;
+    private String size;
+
+    private int colorId;
     private String color;
     private int quantity;
     private BigDecimal price;
@@ -37,12 +40,28 @@ public class OrderDetailDTO {
         this.productName = productName;
     }
 
-    public int getSize() {
+    public int getSizeId() {
+        return sizeId;
+    }
+
+    public void setSizeId(int sizeId) {
+        this.sizeId = sizeId;
+    }
+
+    public String getSize() {
         return size;
     }
 
-    public void setSize(int size) {
+    public void setSize(String size) {
         this.size = size;
+    }
+
+    public int getColorId() {
+        return colorId;
+    }
+
+    public void setColorId(int colorId) {
+        this.colorId = colorId;
     }
 
     public String getColor() {

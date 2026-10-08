@@ -14,11 +14,12 @@ public class ProductDetail {
     @Column(name = "`ProductId`")
     private int productId;
 
-    @Column(name = "`Size`")
-    private int size;
+    // Khóa ngoại tới bảng Size / Color (tên size, màu lấy từ /api/sizes và /api/colors)
+    @Column(name = "`SizeId`")
+    private int sizeId;
 
-    @Column(name = "`Color`")
-    private String color;
+    @Column(name = "`ColorId`")
+    private int colorId;
 
     @Column(name = "`Quantity`")
     private int quantity;
@@ -39,20 +40,20 @@ public class ProductDetail {
         this.productId = productId;
     }
 
-    public int getSize() {
-        return size;
+    public int getSizeId() {
+        return sizeId;
     }
 
-    public void setSize(int size) {
-        this.size = size;
+    public void setSizeId(int sizeId) {
+        this.sizeId = sizeId;
     }
 
-    public String getColor() {
-        return color;
+    public int getColorId() {
+        return colorId;
     }
 
-    public void setColor(String color) {
-        this.color = color;
+    public void setColorId(int colorId) {
+        this.colorId = colorId;
     }
 
     public int getQuantity() {

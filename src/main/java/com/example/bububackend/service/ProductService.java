@@ -1,15 +1,15 @@
 package com.example.bububackend.service;
 
-import com.example.bububackend.model.Category;
-import com.example.bububackend.model.Product;
-import com.example.bububackend.model.ProductDetail;
-import com.example.bububackend.repository.ProductDetailRepository;
-import com.example.bububackend.repository.ProductRepository;
-import com.example.bububackend.repository.CategoryRepository;
+import com.example.bububackend.DTO.ImageDTO;
+import com.example.bububackend.DTO.ProductDetailDTO;
+import com.example.bububackend.DTO.ProductDetailResponseDTO;
+import com.example.bububackend.model.*;
+import com.example.bububackend.repository.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -18,12 +18,18 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ProductDetailRepository productDetailRepository;
+    private final SizeRepository sizeRepository;
+    private final ColorRepository colorRepository;
+    private final ImageRepository imageRepository;
 
-
-    public ProductService(ProductRepository productRepository,CategoryRepository categoryRepository,ProductDetailRepository productDetailRepository) {
+    public ProductService(ProductRepository productRepository,CategoryRepository categoryRepository,ProductDetailRepository productDetailRepository,SizeRepository sizeRepository,
+                          ColorRepository colorRepository,ImageRepository imageRepository) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productDetailRepository = productDetailRepository;
+        this.sizeRepository = sizeRepository;
+        this.colorRepository = colorRepository;
+        this.imageRepository = imageRepository;
     }
 
     public List<Product> getAllProducts() {
@@ -55,8 +61,105 @@ public class ProductService {
         return products;
     }
 
-    public Product getProductById(int id) {
-        return productRepository.findById(id).get();
+    public ProductDetailResponseDTO getProductById(int id) {
+
+        // =========================
+        // 1. Lấy sản phẩm
+        // =========================
+
+        Product product = productRepository.findById(id).orElse(null);
+
+        if (product == null) {
+            return null;
+        }
+
+
+        // =========================
+        // 2. Lấy category
+        // =========================
+
+        Category category =
+                categoryRepository.findById(product.getCategoryId()).orElse(null);
+
+        product.setCategoryName(
+                category != null ? category.getName() : ""
+        );
+
+
+        // =========================
+        // 3. Lấy danh sách chi tiết sản phẩm
+        // =========================
+
+        List<ProductDetail> details =
+                productDetailRepository.findByProductId(id);
+
+        List<ProductDetailDTO> productDetails = new ArrayList<>();
+
+        int totalQuantity = 0;
+
+        for (ProductDetail detail : details) {
+
+            Size size = sizeRepository
+                    .findById(detail.getSizeId())
+                    .orElse(null);
+
+            Color color = colorRepository
+                    .findById(detail.getColorId())
+                    .orElse(null);
+
+            ProductDetailDTO productDetail = new ProductDetailDTO();
+
+            productDetail.setId(detail.getId());
+
+            productDetail.setSizeId(detail.getSizeId());
+            productDetail.setSize(
+                    size != null ? size.getName() : ""
+            );
+
+            productDetail.setColorId(detail.getColorId());
+            productDetail.setColor(
+                    color != null ? color.getName() : ""
+            );
+
+            productDetail.setQuantity(detail.getQuantity());
+
+            productDetails.add(productDetail);
+
+            totalQuantity += detail.getQuantity();
+        }
+
+        product.setTotalQuantity(totalQuantity);
+
+
+        // =========================
+        // 4. Lấy danh sách ảnh
+        // =========================
+
+        List<Image> images =
+                imageRepository.findByProductIdOrderBySortOrderAscIdAsc(id);
+        List<ImageInfo> imageInfos = images.stream()
+                .map(image -> new ImageInfo(
+                        image.getId(),
+                        image.getProductId(),
+                        image.getFileName(),
+                        "/api/images/" + image.getId() + "/file",
+                        image.isMain(),
+                        image.getSortOrder(),
+                        image.getVersion()
+                ))
+                .toList();
+
+        // =========================
+        // 5. Tạo response
+        // =========================
+
+        ProductDetailResponseDTO response =
+                new ProductDetailResponseDTO();
+
+        response.setProduct(product);
+        response.setProductDetails(productDetails);
+        response.setImages(imageInfos);
+        return response;
     }
 
     public Product createProduct(Product product) {

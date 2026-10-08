@@ -39,7 +39,10 @@
         products: '/api/products',
         categories: '/api/categories',
         orders: '/api/orders',
-        details: '/api/product-details', // biến thể sản phẩm (size / màu / số lượng)
+        details: '/api/product-details', // biến thể sản phẩm (sizeId / colorId / số lượng)
+        images: '/api/images',           // ảnh sản phẩm (lưu trong bảng Image, tối đa 5 ảnh / sản phẩm)
+        sizes: '/api/sizes',             // danh sách size
+        colors: '/api/colors',           // danh sách màu
         accounts: '/api/accounts',       // tài khoản quản trị
     };
 
@@ -101,7 +104,9 @@
      * trả null nếu server trả 204 (không có nội dung, ví dụ sau khi xóa).
      * ================================================================= */
     async function http(url, opts = {}) {
-        const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+        // Gửi file (FormData) thì để trình duyệt tự đặt Content-Type; còn lại gửi JSON
+        const headers = opts.body instanceof FormData ? {} : { 'Content-Type': 'application/json' };
+        const res = await fetch(url, { headers, ...opts });
         if (!res.ok) {
             // Cố đọc thông báo lỗi mà backend trả về (message / error / detail) để hiện cho người dùng
             let msg = 'Lỗi ' + res.status;
@@ -395,6 +400,23 @@
             if (!MOCK[name]) return http(`${ENDPOINTS[name]}/${id}`, { method: 'DELETE' });
             db[name] = db[name].filter((x) => x.id !== id);
         },
+
+        // --- Ảnh sản phẩm (gửi file nên dùng FormData, không đi qua save) ---
+        // Thêm một hoặc nhiều ảnh cho sản phẩm
+        uploadImages: (productId, files) => {
+            const fd = new FormData();
+            fd.append('productId', productId);
+            files.forEach((f) => fd.append('files', f));
+            return http(ENDPOINTS.images, { method: 'POST', body: fd });
+        },
+        // Thay nội dung một ảnh bằng file khác
+        replaceImage: (id, file) => {
+            const fd = new FormData();
+            fd.append('file', file);
+            return http(`${ENDPOINTS.images}/${id}/file`, { method: 'PUT', body: fd });
+        },
+        // Đặt làm ảnh đại diện
+        setMainImage: (id) => http(`${ENDPOINTS.images}/${id}/main`, { method: 'PUT' }),
     };
 
     /* =================================================================
@@ -411,7 +433,12 @@
     };
 
     // Dữ liệu đang hiển thị (nạp bởi reload())
-    let data = { products: [], categories: [], orders: [], details: [], accounts: [] };
+    let data = { products: [], categories: [], orders: [], details: [], images: [], sizes: [], colors: [], accounts: [] };
+
+    // Ảnh sản phẩm: tối đa 5 ảnh, chỉ nhận JPG / PNG / GIF / WebP (backend cũng kiểm tra lại)
+    const MAX_IMAGES = 5;
+    const IMG_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp';
+    const IMG_OK = /^image\/(jpeg|png|gif|webp)$/;
 
     // Nhãn + màu của trạng thái: [chữ hiển thị, class màu của thẻ .tag]
     const PRODUCT_STATUS = {
@@ -436,6 +463,22 @@
     const prodById = (id) => data.products.find((p) => p.id === id);
     // Các biến thể (size / màu / số lượng) của một sản phẩm
     const detailsOf = (pid) => data.details.filter((d) => d.productId === pid);
+    // Ảnh của một sản phẩm (ảnh đại diện đứng đầu) và đường dẫn hiển thị của một ảnh
+    const imagesOf = (pid) => data.images.filter((i) => i.productId === pid).sort((a, b) => (b.main - a.main) || (a.sortOrder - b.sortOrder) || (a.id - b.id));
+    const imgUrl = (im) => `${ENDPOINTS.images}/${im.id}/file?v=${im.version}`;
+    // Ô ảnh nhỏ của sản phẩm: ảnh đại diện; chưa có ảnh thì dùng link cũ (nếu có); không thì hiện emoji
+    const productThumb = (p) => {
+        const main = imagesOf(p.id)[0];
+        const src = main ? imgUrl(main) : p.image;
+        return src ? `<img src="${esc(src)}" alt="">` : esc(p.icon || '📦');
+    };
+    // Tra cứu size / màu theo id (biến thể chỉ lưu sizeId, colorId)
+    const sizeById = (id) => data.sizes.find((s) => s.id === id);
+    const colorById = (id) => data.colors.find((c) => c.id === id);
+    const sizeName = (id) => (sizeById(id) || {}).name ?? '?';
+    const colorName = (id) => (colorById(id) || {}).name ?? '?';
+    // So sánh tên theo kiểu tự nhiên: 9 < 10 < 39, A < B
+    const sortByName = (a, b) => String(a.name).localeCompare(String(b.name), 'vi', { numeric: true });
     // Tồn kho của sản phẩm: có biến thể thì bằng tổng số lượng các biến thể, chưa có thì dùng tồn kho riêng của sản phẩm
     const stockOf = (p) => { const ds = detailsOf(p.id); return ds.length ? ds.reduce((s, d) => s + (Number(d.quantity) || 0), 0) : p.stock; };
     // Thông tin hiển thị của một dòng sản phẩm trong đơn (ưu tiên dữ liệu trong đơn, thiếu thì lấy từ sản phẩm)
@@ -452,8 +495,13 @@
         const detailsReq = api.list('details').catch((e) => { console.warn('[Bubu] Không tải được biến thể:', e.message); return []; });
         // Tài khoản: tương tự, API chưa sẵn sàng thì coi như rỗng
         const accountsReq = api.list('accounts').catch((e) => { console.warn('[Bubu] Không tải được tài khoản:', e.message); return []; });
-        const [products, categories, orders, details, accounts] = await Promise.all([api.list('products'), api.list('categories'), api.list('orders'), detailsReq, accountsReq]);
-        data = { products, categories, orders, details, accounts };
+        // Size và màu: dùng cho biến thể; API chưa sẵn sàng thì coi như rỗng
+        const sizesReq = api.list('sizes').catch((e) => { console.warn('[Bubu] Không tải được size:', e.message); return []; });
+        const colorsReq = api.list('colors').catch((e) => { console.warn('[Bubu] Không tải được màu:', e.message); return []; });
+        // Ảnh: API chưa sẵn sàng thì coi như rỗng (sản phẩm hiện emoji thay ảnh)
+        const imagesReq = api.list('images').catch((e) => { console.warn('[Bubu] Không tải được ảnh:', e.message); return []; });
+        const [products, categories, orders, details, images, sizes, colors, accounts] = await Promise.all([api.list('products'), api.list('categories'), api.list('orders'), detailsReq, imagesReq, sizesReq, colorsReq, accountsReq]);
+        data = { products, categories, orders, details, images, sizes, colors, accounts };
         if (!MOCK.products) data.categories = linkCategories(products, categories);
         const pending = orders.filter((o) => o.status === 'pending').length;
         const b = $('#pendingBadge');
@@ -481,7 +529,7 @@
         $('#modalFoot').innerHTML = foot || '';
         // xóa các handler riêng của modal trước (ví dụ modal biến thể)
         const mb = $('#modalBody');
-        mb.onclick = null; mb.onchange = null; mb.onkeydown = null;
+        mb.onclick = null; mb.onchange = null; mb.onkeydown = null; mb.oninput = null;
         $('#modal').hidden = false;
         const first = $('#modalBody input, #modalBody select, #modalBody textarea');
         if (first) first.focus(); // tự đặt con trỏ vào ô đầu tiên
@@ -611,13 +659,13 @@
         state.products.page = p.cur;
         const rows = p.rows.map((x) => `
       <tr>
-        <td><div class="prod"><div class="thumb">${x.image ? `<img src="${esc(x.image)}" alt="">` : esc(x.icon || '📦')}</div>
+        <td><div class="prod"><div class="thumb">${productThumb(x)}</div>
           <div><div class="prod-name">${esc(x.name)}</div><div class="prod-sku">${esc(x.sku)}</div></div></div></td>
         <td><span class="chip">${esc(catName(x.categoryId))}</span></td>
         <td class="num price">${money(x.price)}</td>
         <td class="num ${stockOf(x) <= 10 ? 'low' : ''}">${stockOf(x)}</td>
         <td>${tag(PRODUCT_STATUS, x.status)}</td>
-        <td>${actionBtns(x.id, `<button class="icon-btn" data-act="variants" data-id="${x.id}" title="Quản lý biến thể (size / màu)">${ICON.variants}</button>`)}</td>
+        <td>${actionBtns(x.id, `<button class="icon-btn" data-act="variants" data-id="${x.id}" title="Biến thể, size, màu và ảnh">${ICON.variants}</button>`)}</td>
       </tr>`).join('');
         $('#list').innerHTML = p.total === 0
             ? emptyHtml('Không tìm thấy sản phẩm phù hợp.')
@@ -644,16 +692,42 @@
      
         <div class="field"><label>Trạng thái</label><select class="select" name="status">${Object.entries(PRODUCT_STATUS).map(([k, v]) => `<option value="${k}" ${k === (p.status || 'active') ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
         <div class="field"><label>Biểu tượng (emoji)</label><input class="input" name="icon" value="${esc(p.icon || '📦')}" maxlength="4"></div>
-        <div class="field full"><label>Link hình ảnh (không bắt buộc)</label><input class="input" name="image" value="${esc(p.image)}" placeholder="https://..."></div>
+        ${isEdit ? `
+        <div class="field full"><label>Ảnh sản phẩm</label>
+          <div class="vm-cur"><div class="thumb">${productThumb(p)}</div>
+            <button type="button" class="btn" id="pfImg">Quản lý ảnh (${imagesOf(p.id).length}/${MAX_IMAGES})</button></div></div>
+        ` : `
+        <div class="field full"><label>Ảnh đại diện <em>*</em></label>
+          <input class="input" type="file" name="imageFile" accept="${IMG_ACCEPT}">
+          <img class="vm-prev" id="imgPrev" alt="" hidden>
+          <span class="err" data-err="imageFile"></span>
+          <div class="vm-hint" style="margin:6px 0 0">Thêm tối đa ${MAX_IMAGES} ảnh ở nút "Biến thể, size, màu và ảnh" sau khi lưu.</div></div>
+        `}
         <div class="field full"><label>Mô tả</label><textarea name="description" placeholder="Mô tả ngắn về sản phẩm">${esc(p.description)}</textarea></div>
       </form>`,
             foot: `<button class="btn" data-close>Hủy</button><button class="btn btn-primary" id="saveBtn">${isEdit ? 'Lưu thay đổi' : 'Thêm sản phẩm'}</button>`,
         });
+        // Sửa sản phẩm: nút mở thẳng tab Ảnh; Thêm sản phẩm: xem trước ảnh vừa chọn
+        if (isEdit) $('#pfImg').onclick = () => { closeModal(); variantManager(p.id, 'images'); };
+        else {
+            $('#pf [name=imageFile]').onchange = (e) => {
+                const f = e.target.files[0], prev = $('#imgPrev');
+                if (prev.src.startsWith('blob:')) URL.revokeObjectURL(prev.src);
+                prev.hidden = !f;
+                if (f) prev.src = URL.createObjectURL(f);
+            };
+        }
         $('#saveBtn').onclick = async () => {
             const fd = Object.fromEntries(new FormData($('#pf')));
             // Kiểm tra dữ liệu nhập
             $$('[data-err]').forEach((e) => (e.textContent = ''));
             let bad = false;
+            // Thêm mới bắt buộc có một ảnh đại diện
+            const file = isEdit ? null : fd.imageFile;
+            if (!isEdit) {
+                if (!file || !file.size) { $('[data-err=imageFile]').textContent = 'Vui lòng chọn ảnh đại diện'; bad = true; }
+                else if (!IMG_OK.test(file.type)) { $('[data-err=imageFile]').textContent = 'Chỉ nhận ảnh JPG, PNG, GIF hoặc WebP'; bad = true; }
+            }
             if (!fd.name.trim()) { $('[data-err=name]').textContent = 'Vui lòng nhập tên sản phẩm'; bad = true; }
             if (fd.price === '' || Number(fd.price) < 0) { $('[data-err=price]').textContent = 'Giá không hợp lệ'; bad = true; }
             if (!fd.categoryId) { $('[data-err=categoryId]').textContent = 'Vui lòng chọn danh mục (hãy tạo danh mục trước nếu chưa có)'; bad = true; }
@@ -666,13 +740,23 @@
                 stock: Number(fd.stock) || 0,
                 status: fd.status,
                 icon: fd.icon || '📦',
-                image: fd.image.trim(),
+                image: p.image || '', // ảnh thật nằm ở bảng Image; giữ nguyên link cũ (nếu có) cho dữ liệu cũ
                 description: fd.description.trim(),
             };
             const btn = $('#saveBtn');
             btn.disabled = true; // chống bấm lưu 2 lần (tránh tạo trùng sản phẩm)
             try {
-                await api.save('products', item);
+                const saved = await api.save('products', item);
+                if (!isEdit) {
+                    // Sản phẩm mới: tải ảnh đại diện lên; lỗi thì xóa sản phẩm vừa tạo để không có sản phẩm thiếu ảnh
+                    const newId = get(saved, 'id', null);
+                    if (newId == null) throw new Error('Không lấy được mã sản phẩm vừa tạo để tải ảnh lên');
+                    try { await api.uploadImages(newId, [file]); }
+                    catch (e) {
+                        await api.remove('products', newId).catch(() => {});
+                        throw new Error('Không tải được ảnh nên chưa thêm sản phẩm: ' + e.message);
+                    }
+                }
                 await reload();
                 closeModal();
                 render();
@@ -688,7 +772,7 @@
         openDrawer({
             title: 'Chi tiết sản phẩm',
             body: `
-        <div class="detail-hero">${p.image ? `<img src="${esc(p.image)}" alt="">` : esc(p.icon || '📦')}</div>
+        <div class="detail-hero">${productThumb(p)}</div>
         <div class="detail-title">${esc(p.name)}</div>
         <div>${tag(PRODUCT_STATUS, p.status)}</div>
         <div class="detail-price">${money(p.price)}</div>
@@ -699,127 +783,290 @@
         </dl>
         <div class="detail-desc">${esc(p.description) || '<i>Chưa có mô tả.</i>'}</div>
         <h4 style="margin:18px 0 6px">Biến thể (${detailsOf(p.id).length})</h4>
-        ${detailsOf(p.id).length ? `<table class="items"><tbody>${detailsOf(p.id).map((d) => `<tr><td>Size ${esc(d.size)} · ${esc(d.color)}</td><td class="num">${esc(d.quantity)}</td></tr>`).join('')}</tbody></table>` : '<div style="color:var(--muted)">Chưa có biến thể.</div>'}`,
+        ${detailsOf(p.id).length ? `<table class="items"><tbody>${detailsOf(p.id).map((d) => `<tr><td>Size ${esc(sizeName(d.sizeId))} · ${esc(colorName(d.colorId))}</td><td class="num">${esc(d.quantity)}</td></tr>`).join('')}</tbody></table>` : '<div style="color:var(--muted)">Chưa có biến thể.</div>'}`,
             foot: `<button class="btn" data-close>Đóng</button><button class="btn" id="dVar">Quản lý biến thể</button><button class="btn btn-primary" id="dEdit">Sửa sản phẩm</button>`,
         });
-        $('#dVar').onclick = () => { closeDrawer(); variantManager(p.id); };
+        $('#dVar').onclick = () => { closeDrawer(); variantManager(p.id, 'variants'); };
         $('#dEdit').onclick = () => { closeDrawer(); productForm(p); };
     }
 
-    /* ---------- [8.1] Biến thể sản phẩm (bảng ProductDetail: size / màu / số lượng) ----------
-     * Modal gồm 2 phần, không có thanh cuộn ngang:
-     *   1) Form "Thêm biến thể" ở trên cùng (Size, Màu, Số lượng, nút Thêm; Enter cũng thêm được)
-     *   2) Danh sách biến thể: mỗi biến thể một hàng = Size · Màu · ô số lượng · nút xóa.
-     *      Sửa số lượng trực tiếp trong ô, rời ô (hoặc Enter) là tự lưu.
-     * Sau mỗi thay đổi: tải lại dữ liệu, vẽ lại bảng sản phẩm phía sau (để tồn kho cập nhật)
-     * và vẽ lại chính modal này. */
+    /* ---------- [8.1] Quản lý biến thể + Size + Màu (modal 3 tab) ----------
+     * Một modal duy nhất, 3 tab, không có thanh cuộn ngang:
+     *   Tab "Biến thể": chọn Size, Màu (từ danh sách) + số lượng rồi bấm Thêm.
+     *                   Mỗi biến thể một hàng; sửa số lượng ngay trong ô, rời ô là tự lưu.
+     *   Tab "Size":     thêm size mới; sửa tên ngay trong ô (rời ô là tự lưu); xóa.
+     *   Tab "Màu":      thêm màu mới (tên + mã màu); sửa tên / mã màu ngay trong hàng; xóa.
+     * Size / màu đang có biến thể sử dụng thì backend từ chối xóa (409) và hiện thông báo.
+     * Sau mỗi thay đổi: tải lại dữ liệu, vẽ lại bảng sản phẩm phía sau (tồn kho) và vẽ lại modal. */
 
-    // CSS riêng cho modal biến thể, chèn vào trang một lần duy nhất
+    let vmTab = 'variants'; // tab đang mở: 'variants' | 'sizes' | 'colors'
+
+    // CSS riêng cho modal này, chèn vào trang một lần duy nhất
     function injectVariantStyle() {
         if ($('#variantStyle')) return;
         const s = document.createElement('style');
         s.id = 'variantStyle';
         s.textContent = `
-          .vm-add{display:grid;grid-template-columns:90px 1fr 110px auto;gap:8px;align-items:end;padding:12px;border:1px dashed var(--line,#d8d8d8);border-radius:10px;margin-bottom:14px}
+          .vm-tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line,#e5e5e5)}
+          .vm-tab{border:0;background:none;padding:8px 14px;cursor:pointer;font:inherit;color:var(--muted,#888);border-bottom:2px solid transparent;margin-bottom:-1px}
+          .vm-tab.on{color:var(--brand,#e91e63);border-bottom-color:var(--brand,#e91e63);font-weight:700}
+          .vm-add{display:grid;gap:8px;align-items:end;padding:12px;border:1px dashed var(--line,#d8d8d8);border-radius:10px;margin-bottom:14px}
+          .vm-add-v{grid-template-columns:1fr 1fr 90px auto}
+          .vm-add-s{grid-template-columns:1fr auto}
+          .vm-add-c{grid-template-columns:1fr 64px auto}
           .vm-add label{display:block;font-size:12px;color:var(--muted,#888);margin-bottom:4px}
-          .vm-add .input{width:100%;min-width:0;box-sizing:border-box}
+          .vm-add .input,.vm-add .select{width:100%;min-width:0;box-sizing:border-box}
+          .vm-hint{margin:-6px 0 12px;font-size:13px;color:var(--muted,#888)}
           .vm-sum{display:flex;justify-content:space-between;font-size:13px;color:var(--muted,#888);margin:0 2px 8px}
           .vm-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;overflow-x:hidden}
           .vm-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line,#e5e5e5);border-radius:10px}
           .vm-size{flex:none;min-width:64px;font-weight:700}
           .vm-color{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
           .vm-qty{flex:none;width:90px;box-sizing:border-box}
+          .vm-name{flex:1;min-width:0;box-sizing:border-box}
+          .vm-use{flex:none;font-size:12px;color:var(--muted,#888)}
+          .vm-pick{flex:none;width:40px;height:32px;padding:0;border:1px solid var(--line,#d8d8d8);border-radius:6px;background:none;cursor:pointer}
+          .vm-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.2)}
+          .vm-dot.none{border-style:dashed;background:none}
           .vm-empty{padding:16px 0;text-align:center;color:var(--muted,#888)}
-          @media (max-width:520px){.vm-add{grid-template-columns:1fr 1fr}.vm-add button{grid-column:1/-1}}`;
+          .vm-add-i{grid-template-columns:1fr auto}
+          .vm-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:340px;overflow-y:auto;overflow-x:hidden}
+          .vm-img{position:relative;display:flex;flex-direction:column;border:1px solid var(--line,#e5e5e5);border-radius:10px;overflow:hidden}
+          .vm-img img{display:block;width:100%;height:120px;object-fit:cover;background:#f4f4f4}
+          .vm-badge{position:absolute;top:6px;left:6px;padding:2px 8px;border-radius:99px;background:var(--brand,#e91e63);color:#fff;font-size:11px}
+          .vm-img-act{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px}
+          .vm-img-act .btn{padding:4px 8px;font-size:12px}
+          .vm-prev{display:block;max-width:120px;max-height:120px;margin-top:8px;border-radius:8px;border:1px solid var(--line,#e5e5e5)}
+          .vm-prev[hidden]{display:none}
+          .vm-cur{display:flex;align-items:center;gap:12px}
+          @media (max-width:520px){.vm-add-v{grid-template-columns:1fr 1fr}.vm-add-v button{grid-column:1/-1}}`;
         document.head.appendChild(s);
     }
 
-    function variantManager(productId) {
+    // tab: truyền vào để mở đúng tab; bỏ trống = giữ tab đang mở (dùng khi vẽ lại sau khi lưu)
+    function variantManager(productId, tab) {
         const p = prodById(productId);
         if (!p) return;
+        if (tab) vmTab = tab;
         injectVariantStyle();
-        const list = detailsOf(productId).sort((a, b) => a.size - b.size || String(a.color).localeCompare(String(b.color), 'vi'));
 
-        // Một hàng biến thể trong danh sách
-        const row = (d) => `
+        const sizes = [...data.sizes].sort(sortByName);
+        const colors = [...data.colors].sort(sortByName);
+        const list = detailsOf(productId).sort((a, b) =>
+            sortByName({ name: sizeName(a.sizeId) }, { name: sizeName(b.sizeId) })
+            || sortByName({ name: colorName(a.colorId) }, { name: colorName(b.colorId) }));
+        const usedSize = (id) => data.details.filter((d) => d.sizeId === id).length;
+        const usedColor = (id) => data.details.filter((d) => d.colorId === id).length;
+        const dot = (hex) => `<i class="vm-dot ${hex ? '' : 'none'}" ${hex ? `style="background:${esc(hex)}"` : ''}></i>`;
+        const options = (arr, ph) => `<option value="">${ph}</option>` + arr.filter((x) => x.active !== false).map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+
+        // ----- Tab 1: biến thể của sản phẩm -----
+        const variantRow = (d) => `
           <div class="vm-row" data-vid="${d.id}">
-            <span class="vm-size">Size ${esc(d.size)}</span>
-            <span class="vm-color" title="${esc(d.color)}">${esc(d.color)}</span>
+            <span class="vm-size">Size ${esc(sizeName(d.sizeId))}</span>
+            <span class="vm-color" title="${esc(colorName(d.colorId))}">${dot((colorById(d.colorId) || {}).hexCode)}${esc(colorName(d.colorId))}</span>
             <input class="input vm-qty" type="number" min="0" step="1" data-qty value="${esc(d.quantity)}" title="Số lượng (rời ô là tự lưu)">
             <button class="icon-btn del" data-vact="del" title="Xóa biến thể">${ICON.del}</button>
           </div>`;
+        const panelVariants = `
+          <div class="vm-add vm-add-v">
+            <div><label>Size</label><select class="select" data-f="sizeId">${options(sizes, 'Chọn size')}</select></div>
+            <div><label>Màu</label><select class="select" data-f="colorId">${options(colors, 'Chọn màu')}</select></div>
+            <div><label>Số lượng</label><input class="input" type="number" min="0" step="1" data-f="quantity" placeholder="VD: 10"></div>
+            <button class="btn btn-primary" data-vact="add">+ Thêm</button>
+          </div>
+          ${!sizes.length || !colors.length ? '<div class="vm-hint">Chưa có size hoặc màu để chọn. Hãy thêm ở tab "Size" / "Màu" trước.</div>' : ''}
+          <div class="vm-sum"><span>${list.length} biến thể</span><span>Tổng tồn kho: <b>${stockOf(p)}</b></span></div>
+          <div class="vm-list">${list.length ? list.map(variantRow).join('') : '<div class="vm-empty">Chưa có biến thể. Chọn size, màu, số lượng ở trên rồi bấm Thêm.</div>'}</div>`;
 
+        // ----- Tab 2: quản lý Size -----
+        const sizeRow = (s) => `
+          <div class="vm-row" data-sid="${s.id}">
+            <input class="input vm-name" data-sname maxlength="20" value="${esc(s.name)}" title="Sửa tên (rời ô là tự lưu)">
+            <span class="vm-use">${usedSize(s.id)} biến thể</span>
+            <button class="icon-btn del" data-vact="delSize" title="Xóa size">${ICON.del}</button>
+          </div>`;
+        const panelSizes = `
+          <div class="vm-add vm-add-s">
+            <div><label>Tên size mới</label><input class="input" data-f="sizeName" maxlength="20" placeholder="VD: 41 hoặc M"></div>
+            <button class="btn btn-primary" data-vact="addSize">+ Thêm size</button>
+          </div>
+          <div class="vm-sum"><span>${sizes.length} size</span><span>Size đang dùng không xóa được</span></div>
+          <div class="vm-list">${sizes.length ? sizes.map(sizeRow).join('') : '<div class="vm-empty">Chưa có size nào.</div>'}</div>`;
+
+        // ----- Tab 3: quản lý Màu -----
+        const colorRow = (c) => `
+          <div class="vm-row" data-cid="${c.id}">
+            <input class="vm-pick" type="color" data-chex data-set="${c.hexCode ? 1 : 0}" value="${esc(c.hexCode || '#cccccc')}" title="Mã màu">
+            <input class="input vm-name" data-cname maxlength="50" value="${esc(c.name)}" title="Sửa tên (rời ô là tự lưu)">
+            <span class="vm-use">${usedColor(c.id)} biến thể</span>
+            <button class="icon-btn del" data-vact="delColor" title="Xóa màu">${ICON.del}</button>
+          </div>`;
+        const panelColors = `
+          <div class="vm-add vm-add-c">
+            <div><label>Tên màu mới</label><input class="input" data-f="colorName" maxlength="50" placeholder="VD: Đen"></div>
+            <div><label>Mã màu</label><input class="vm-pick" type="color" data-f="colorHex" data-set="0" value="#cccccc"></div>
+            <button class="btn btn-primary" data-vact="addColor">+ Thêm màu</button>
+          </div>
+          <div class="vm-sum"><span>${colors.length} màu</span><span>Màu đang dùng không xóa được</span></div>
+          <div class="vm-list">${colors.length ? colors.map(colorRow).join('') : '<div class="vm-empty">Chưa có màu nào.</div>'}</div>`;
+
+        // ----- Tab 4: ảnh sản phẩm (tối đa 5, ảnh đầu tiên là ảnh đại diện) -----
+        const imgs = imagesOf(productId);
+        const full = imgs.length >= MAX_IMAGES;
+        const imageCard = (im) => `
+          <div class="vm-img" data-iid="${im.id}">
+            <img src="${imgUrl(im)}" alt="${esc(im.fileName || '')}">
+            ${im.main ? '<span class="vm-badge">Đại diện</span>' : ''}
+            <div class="vm-img-act">
+              ${im.main ? '' : '<button class="btn" data-vact="mainImg">Đặt đại diện</button>'}
+              <button class="btn" data-vact="replaceImg">Thay ảnh</button>
+              <button class="icon-btn del" data-vact="delImg" title="Xóa ảnh">${ICON.del}</button>
+            </div>
+          </div>`;
+        const panelImages = `
+          <div class="vm-add vm-add-i">
+            <div><label>${full ? 'Đã đủ ' + MAX_IMAGES + ' ảnh, hãy xóa bớt để thêm' : 'Chọn ảnh (còn ' + (MAX_IMAGES - imgs.length) + ' chỗ, có thể chọn nhiều ảnh)'}</label>
+              <input class="input" type="file" multiple accept="${IMG_ACCEPT}" data-f="imgFiles" ${full ? 'disabled' : ''}></div>
+            <button class="btn btn-primary" data-vact="addImg" ${full ? 'disabled' : ''}>+ Thêm ảnh</button>
+          </div>
+          <input type="file" hidden accept="${IMG_ACCEPT}" data-replace>
+          <div class="vm-sum"><span>${imgs.length}/${MAX_IMAGES} ảnh</span><span>Ảnh đại diện hiện ở danh sách sản phẩm</span></div>
+          ${imgs.length ? `<div class="vm-imgs">${imgs.map(imageCard).join('')}</div>` : '<div class="vm-empty">Chưa có ảnh. Chọn ảnh ở trên rồi bấm Thêm ảnh (ảnh đầu tiên sẽ là ảnh đại diện).</div>'}`;
+
+        const tabs = [['variants', 'Biến thể (' + list.length + ')'], ['sizes', 'Size (' + sizes.length + ')'], ['colors', 'Màu (' + colors.length + ')'], ['images', 'Ảnh (' + imgs.length + ')']];
         openModal({
-            title: 'Biến thể: ' + p.name,
-            body: `
-              <div class="vm-add">
-                <div><label>Size</label><input class="input" type="number" min="1" step="1" data-f="size" placeholder="VD: 40"></div>
-                <div><label>Màu</label><input class="input" data-f="color" maxlength="50" placeholder="VD: Đen"></div>
-                <div><label>Số lượng</label><input class="input" type="number" min="0" step="1" data-f="quantity" placeholder="VD: 10"></div>
-                <button class="btn btn-primary" data-vact="add">+ Thêm</button>
-              </div>
-              <div class="vm-sum"><span>${list.length} biến thể</span><span>Tổng tồn kho: <b>${stockOf(p)}</b></span></div>
-              <div class="vm-list">${list.length
-                ? list.map(row).join('')
-                : '<div class="vm-empty">Chưa có biến thể. Nhập size, màu, số lượng ở trên rồi bấm Thêm.</div>'}</div>`,
+            title: 'Biến thể & ảnh: ' + p.name,
+            body: `<div class="vm-tabs">${tabs.map(([k, l]) => `<button class="vm-tab ${k === vmTab ? 'on' : ''}" data-vact="tab" data-tab="${k}">${l}</button>`).join('')}</div>`
+                + ({ variants: panelVariants, sizes: panelSizes, colors: panelColors, images: panelImages }[vmTab]),
             foot: `<button class="btn" data-close>Đóng</button>`,
         });
 
         const body = $('#modalBody');
-        const addVal = (f) => body.querySelector(`.vm-add [data-f=${f}]`).value.trim();
+        const val = (f) => body.querySelector(`[data-f=${f}]`).value.trim();
         // Tải lại dữ liệu rồi vẽ lại: bảng sản phẩm phía sau (tồn kho) + chính modal này
         const refresh = async () => { await reload(); render(); variantManager(productId); };
 
-        // Kiểm tra dữ liệu rồi lưu (vid = null là thêm mới). Trả về true nếu đã lưu.
-        const submit = async (vid, sizeStr, color, qtyStr) => {
-            const size = Number(sizeStr), quantity = Number(qtyStr);
-            if (sizeStr === '' || !Number.isInteger(size) || size <= 0) { toast('Size phải là số nguyên lớn hơn 0', 'bad'); return false; }
-            if (!color) { toast('Vui lòng nhập màu', 'bad'); return false; }
+        // Kiểm tra rồi lưu biến thể (vid = null là thêm mới). Trả về true nếu đã lưu.
+        const saveDetail = async (vid, sizeId, colorId, qtyStr) => {
+            const quantity = Number(qtyStr);
+            if (!sizeId) { toast('Vui lòng chọn size', 'bad'); return false; }
+            if (!colorId) { toast('Vui lòng chọn màu', 'bad'); return false; }
             if (qtyStr === '' || !Number.isInteger(quantity) || quantity < 0) { toast('Số lượng phải là số nguyên từ 0 trở lên', 'bad'); return false; }
             // Không cho trùng cặp size + màu trong cùng một sản phẩm
-            if (detailsOf(productId).some((d) => d.id !== vid && d.size === size && norm(d.color) === norm(color))) {
-                toast('Biến thể size ' + size + ' màu ' + color + ' đã tồn tại', 'bad');
+            if (detailsOf(productId).some((d) => d.id !== vid && d.sizeId === sizeId && d.colorId === colorId)) {
+                toast('Biến thể size ' + sizeName(sizeId) + ' màu ' + colorName(colorId) + ' đã tồn tại', 'bad');
                 return false;
             }
-            await api.save('details', { ...(vid ? { id: vid } : {}), productId, size, color, quantity });
+            await api.save('details', { ...(vid ? { id: vid } : {}), productId, sizeId, colorId, quantity });
             return true;
         };
 
-        // Nút Thêm / Xóa
+        // Các nút: đổi tab, Thêm, Xóa (biến thể / size / màu)
         body.onclick = async (e) => {
             const btn = e.target.closest('[data-vact]');
             if (!btn) return;
+            const act = btn.dataset.vact;
             try {
-                if (btn.dataset.vact === 'del') {
+                if (act === 'tab') { vmTab = btn.dataset.tab; variantManager(productId); return; }
+
+                if (act === 'del') {
                     if (!confirm('Xóa biến thể này?')) return;
                     await api.remove('details', Number(btn.closest('.vm-row').dataset.vid));
                     toast('Đã xóa biến thể');
-                } else {
-                    if (!(await submit(null, addVal('size'), addVal('color'), addVal('quantity')))) return;
+                } else if (act === 'add') {
+                    if (!(await saveDetail(null, Number(val('sizeId')), Number(val('colorId')), val('quantity')))) return;
                     toast('Đã thêm biến thể');
+                } else if (act === 'addSize') {
+                    const name = val('sizeName');
+                    if (!name) { toast('Vui lòng nhập tên size', 'bad'); return; }
+                    await api.save('sizes', { name, active: true });
+                    toast('Đã thêm size');
+                } else if (act === 'delSize') {
+                    const s = sizeById(Number(btn.closest('.vm-row').dataset.sid));
+                    if (!s || !confirm(`Xóa size "${s.name}"?`)) return;
+                    await api.remove('sizes', s.id);
+                    toast('Đã xóa size');
+                } else if (act === 'addColor') {
+                    const name = val('colorName');
+                    if (!name) { toast('Vui lòng nhập tên màu', 'bad'); return; }
+                    const pick = body.querySelector('[data-f=colorHex]');
+                    await api.save('colors', { name, hexCode: pick.dataset.set === '1' ? pick.value.toUpperCase() : null, active: true });
+                    toast('Đã thêm màu');
+                } else if (act === 'delColor') {
+                    const c = colorById(Number(btn.closest('.vm-row').dataset.cid));
+                    if (!c || !confirm(`Xóa màu "${c.name}"?`)) return;
+                    await api.remove('colors', c.id);
+                    toast('Đã xóa màu');
+                } else if (act === 'addImg') {
+                    const files = [...body.querySelector('[data-f=imgFiles]').files];
+                    if (!files.length) { toast('Vui lòng chọn ít nhất 1 ảnh', 'bad'); return; }
+                    if (files.length > MAX_IMAGES - imgs.length) { toast(`Chỉ thêm được tối đa ${MAX_IMAGES - imgs.length} ảnh nữa (mỗi sản phẩm tối đa ${MAX_IMAGES} ảnh)`, 'bad'); return; }
+                    if (files.some((f) => !IMG_OK.test(f.type))) { toast('Chỉ nhận ảnh JPG, PNG, GIF hoặc WebP', 'bad'); return; }
+                    await api.uploadImages(productId, files);
+                    toast('Đã thêm ảnh');
+                } else if (act === 'mainImg') {
+                    await api.setMainImage(Number(btn.closest('.vm-img').dataset.iid));
+                    toast('Đã đặt ảnh đại diện');
+                } else if (act === 'replaceImg') {
+                    // Mở hộp chọn file; chọn xong thì onchange bên dưới sẽ tải lên và thay ảnh này
+                    body.dataset.replaceId = btn.closest('.vm-img').dataset.iid;
+                    body.querySelector('[data-replace]').click();
+                    return;
+                } else if (act === 'delImg') {
+                    if (imgs.length <= 1) { toast('Sản phẩm phải có ít nhất 1 ảnh. Hãy dùng "Thay ảnh" nếu muốn đổi ảnh.', 'bad'); return; }
+                    if (!confirm('Xóa ảnh này?')) return;
+                    await api.remove('images', Number(btn.closest('.vm-img').dataset.iid));
+                    toast('Đã xóa ảnh');
                 }
                 await refresh();
             } catch (err) { toast(err.message, 'bad'); }
         };
 
-        // Sửa số lượng ngay trong ô: rời ô / Enter là tự lưu (lỗi thì vẽ lại để trả về số cũ)
+        // Sửa trực tiếp trong hàng (số lượng / tên size / tên màu / mã màu): rời ô là tự lưu.
+        // Lỗi thì vẽ lại để trả giá trị cũ.
         body.onchange = async (e) => {
-            const inp = e.target.closest('[data-qty]');
-            if (!inp) return;
-            const vid = Number(inp.closest('.vm-row').dataset.vid);
-            const d = detailsOf(productId).find((x) => x.id === vid);
-            if (!d) return;
+            const t = e.target;
             try {
-                if (await submit(vid, String(d.size), d.color, inp.value.trim())) toast('Đã cập nhật số lượng');
+                if (t.matches('[data-qty]')) {
+                    const vid = Number(t.closest('.vm-row').dataset.vid);
+                    const d = detailsOf(productId).find((x) => x.id === vid);
+                    if (!d) return;
+                    if (await saveDetail(vid, d.sizeId, d.colorId, t.value.trim())) toast('Đã cập nhật số lượng');
+                } else if (t.matches('[data-replace]')) {
+                    // Thay nội dung ảnh đã chọn ở nút "Thay ảnh"
+                    const file = t.files[0], iid = Number(body.dataset.replaceId);
+                    if (!file || !iid) return;
+                    if (!IMG_OK.test(file.type)) { toast('Chỉ nhận ảnh JPG, PNG, GIF hoặc WebP', 'bad'); t.value = ''; return; }
+                    await api.replaceImage(iid, file);
+                    toast('Đã thay ảnh');
+                } else if (t.matches('[data-sname]')) {
+                    const s = sizeById(Number(t.closest('.vm-row').dataset.sid));
+                    if (!s) return;
+                    await api.save('sizes', { ...s, name: t.value.trim() });
+                    toast('Đã cập nhật size');
+                } else if (t.matches('[data-cname], [data-chex]')) {
+                    const row = t.closest('.vm-row');
+                    const c = colorById(Number(row.dataset.cid));
+                    if (!c) return;
+                    const pick = row.querySelector('[data-chex]');
+                    if (t.matches('[data-chex]')) pick.dataset.set = '1'; // người dùng đã chọn mã màu
+                    await api.save('colors', { ...c, name: row.querySelector('[data-cname]').value.trim(), hexCode: pick.dataset.set === '1' ? pick.value.toUpperCase() : null });
+                    toast('Đã cập nhật màu');
+                } else return;
                 await refresh();
-            } catch (err) { toast(err.message, 'bad'); }
+            } catch (err) { toast(err.message, 'bad'); await refresh(); }
         };
 
-        // Nhấn Enter trong form thêm = bấm nút Thêm
+        // Chọn mã màu ở form thêm màu = đánh dấu "có mã màu" (nếu không chọn thì lưu không có mã)
+        body.oninput = (e) => { if (e.target.matches('[data-f=colorHex]')) e.target.dataset.set = '1'; };
+
+        // Nhấn Enter trong form thêm = bấm nút Thêm của form đó
         body.onkeydown = (e) => {
-            if (e.key === 'Enter' && e.target.closest('.vm-add')) {
+            const box = e.target.closest('.vm-add');
+            if (e.key === 'Enter' && box) {
                 e.preventDefault();
-                body.querySelector('[data-vact=add]').click();
+                box.querySelector('[data-vact]').click();
             }
         };
     }
@@ -966,7 +1213,7 @@
     // Ngăn kéo xem chi tiết đơn: thông tin khách + từng sản phẩm + tổng cộng
     async function orderDetail(id) {
         const o = data.orders.find((x) => x.id === id); if (!o) return;
-    // Lấy chi tiết sản phẩm của đơn hàng
+        // Lấy chi tiết sản phẩm của đơn hàng
         const res = await fetch(`/api/order-details/order/${id}`); if (!res.ok) { alert('Không thể lấy chi tiết đơn hàng'); return; } const items = await res.json(); openDrawer({ title: 'Đơn ' + o.code, body: ` <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"> <div class="detail-title" style="margin:0"> ${esc(o.customer)} </div> ${orderTag(o)} </div> <dl class="kv"> <dt>Số điện thoại</dt> <dd>${esc(o.phone)}</dd> <dt>Địa chỉ</dt> <dd>${esc(o.address)}</dd> <dt>Ngày đặt</dt> <dd>${fmtDateTime(o.date)}</dd> <dt>Thanh toán</dt> <dd>${esc(o.payment)}</dd> </dl> <h4 style="margin:6px 0">Sản phẩm</h4> <table class="items"> <tbody> ${items.map((it) => ` <tr> <td> ${it.imageUrl ? `<img src="${esc(it.imageUrl)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : '📦' } ${esc(it.productName)} <span style="color:var(--muted)"> × ${it.quantity} </span> <div style="font-size:12px;color:var(--muted)"> Size: ${it.size} | Màu: ${esc(it.color)} </div> </td> <td class="num price"> ${money(it.price * it.quantity)} </td> </tr> `).join('')} <tr> <td style="font-weight:700;border-top:1px solid var(--line)"> Tổng cộng </td> <td class="num price" style="color:var(--brand);font-size:16px;border-top:1px solid var(--line)" > ${money(o.totalAmount)} </td> </tr> </tbody> </table> `, foot: ` <button class="btn" data-close> Đóng </button> <button class="btn btn-primary" id="dEdit"> Cập nhật trạng thái </button> `, }); $('#dEdit').onclick = () => { closeDrawer(); orderForm(o); };
     }
 
@@ -1143,7 +1390,7 @@
             render: renderProducts,
             form: () => productForm(),
             view: productDetail,
-            variants: variantManager, // nút "Biến thể" ở mỗi dòng sản phẩm
+            variants: (id) => variantManager(id, 'variants'), // nút "Biến thể" ở mỗi dòng sản phẩm
             edit: (id) => productForm(prodById(id)),
             del: (id) => {
                 const p = prodById(id);

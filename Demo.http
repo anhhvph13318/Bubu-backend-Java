@@ -7,5 +7,13 @@
 #  "passwordHash": "123",
 #  "active": true
 #}
+#
+#POST http://localhost:8080/api/auth/login
+#Content-Type: application/json
+#
+#{
+#  "username": "admin",
+#  "password": "123456"
+#}
 
-GET http://localhost:8080/api/order-details/order/1
+GET http://localhost:8080/api/products/1008

@@ -75,7 +75,9 @@ button { cursor: pointer; }
 .menu-badge.zero { display: none; }
 
 .sidebar-foot {
-    display: flex; align-items: center; gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     padding: 12px 8px 0; border-top: 1px solid rgba(255, 255, 255, .08);
 }
 .avatar {
@@ -290,3 +292,88 @@ td.num, th.num { text-align: right; }
     .btn-primary#addBtn { padding: 0 11px; }
 }
 @media (max-width: 520px) { .stats { grid-template-columns: 1fr; } }
+
+/* ===== Thông tin tài khoản + nút đăng xuất (cuối sidebar) ===== */
+.sidebar-foot .account-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .06);
+}
+
+.sidebar-foot .avatar {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--brand, #e91e63);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.sidebar-foot .who {
+    min-width: 0;
+    line-height: 1.3;
+}
+
+.sidebar-foot .who-name,
+.sidebar-foot .who-mail {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sidebar-foot .who-name {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.sidebar-foot .who-mail {
+    color: rgba(255, 255, 255, .55);
+    font-size: 12px;
+}
+
+.sidebar-foot .logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: rgba(255, 255, 255, .7);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.sidebar-foot .logout-btn svg {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.sidebar-foot .logout-btn:hover {
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+}
+
+.sidebar-foot .logout-btn:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, .5);
+    outline-offset: 2px;
+}

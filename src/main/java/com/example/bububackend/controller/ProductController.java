@@ -1,5 +1,6 @@
 package com.example.bububackend.controller;
 
+import com.example.bububackend.DTO.ProductDetailResponseDTO;
 import com.example.bububackend.model.Product;
 import com.example.bububackend.service.ProductService;
 import org.springframework.http.HttpStatus;
@@ -33,7 +34,7 @@ public class ProductController {
 
     // GET /api/products/{id} - lấy một sản phẩm
     @GetMapping("/{id}")
-    public Product getProductById(@PathVariable int id) {
+    public ProductDetailResponseDTO getProductById(@PathVariable int id) {
         return productService.getProductById(id);
     }
 
