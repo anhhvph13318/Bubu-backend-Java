@@ -16,4 +16,21 @@
 #  "password": "123456"
 #}
 
-GET http://localhost:8080/api/products
+#POST http://localhost:8080/api/orders
+#Content-Type: application/json
+#
+#{
+#  "customerName":"Vanh",
+#  "phone":"0981032309",
+#  "address":"Hà Tĩnh",
+#  "note":"không",
+#  "paymentMethod":0,
+#  "items":[{"productDetailId":5,"quantity":2}]
+#}
+
+POST http://localhost:8080/api/carts/1/items
+content-Type: application/json
+
+{
+  "productDetailId": 5, "quantity": 1
+}

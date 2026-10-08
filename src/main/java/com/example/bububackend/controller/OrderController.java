@@ -1,5 +1,6 @@
 package com.example.bububackend.controller;
 
+import com.example.bububackend.DTO.CreateOrderRequest;
 import com.example.bububackend.DTO.UpdateOrderStatusDTO;
 import com.example.bububackend.model.Order;
 import com.example.bububackend.response.ApiResponse;
@@ -49,9 +50,16 @@ public class OrderController {
         }
     }
 
+    // POST /api/orders - tạo đơn hàng (trả 201 cùng đơn vừa tạo, có orderCode).
+    // body: {"customerName":"...", "phone":"...", "address":"...", "note":"...", "paymentMethod":0,
+    //        "items":[{"productDetailId":5,"quantity":2}]}
+    @PostMapping
+    public ResponseEntity<Order> createOrder(@RequestBody CreateOrderRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(orderService.createOrder(request));
+    }
+
     @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<Order>> updateStatus(
-            @PathVariable int id) {
+    public ResponseEntity<ApiResponse<Order>> updateStatus(@PathVariable int id) {
 
         try {
             Order order = orderService.updateStatus(id);

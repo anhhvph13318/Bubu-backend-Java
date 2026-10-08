@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +22,11 @@ public interface ImageRepository extends JpaRepository<Image, Integer> {
     @Query("select new com.example.bububackend.model.ImageInfo(i.id, i.productId, i.fileName, '' , i.main, i.sortOrder, i.version) "
             + "from Image i where i.productId = :productId order by i.sortOrder, i.id")
     List<ImageInfo> findInfoByProductId(@Param("productId") int productId);
+
+    // Ảnh đại diện của nhiều sản phẩm cùng lúc (dùng cho giỏ hàng)
+    @Query("select new com.example.bububackend.model.ImageInfo(i.id, i.productId, i.fileName,'', i.main, i.sortOrder, i.version) "
+            + "from Image i where i.main = true and i.productId in :productIds")
+    List<ImageInfo> findMainInfoByProductIds(@Param("productIds") Collection<Integer> productIds);
 
     List<Image> findByProductIdOrderBySortOrderAscIdAsc(int productId);
 
