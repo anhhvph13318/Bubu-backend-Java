@@ -20,42 +20,18 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(
-            @RequestBody LoginRequest request) {
+    public LoginResponse login(@RequestBody LoginRequest request) {
 
-        try {
-            Account account = accountService.login(
-                    request.getUsername(),
-                    request.getPassword()
-            );
+        Account account = accountService.login(
+                request.getUsername(),
+                request.getPassword()
+        );
 
-            LoginResponse response = new LoginResponse(
-                    account.getId(),
-                    account.getUserName(),
-                    account.getFullName(),
-                    account.isActive()
-            );
-
-            return ResponseEntity.ok(
-                    new ApiResponse<>(
-                            response,
-                            true,
-                            null,
-                            null
-                    )
-            );
-
-        } catch (Exception e) {
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(
-                            new ApiResponse<>(
-                                    null,
-                                    false,
-                                    e.getMessage(),
-                                    e.getClass().getSimpleName()
-                            )
-                    );
-        }
+        return new LoginResponse(
+                account.getId(),
+                account.getUserName(),
+                account.getFullName(),
+                account.isActive()
+        );
     }
 }
