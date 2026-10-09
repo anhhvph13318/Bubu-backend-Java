@@ -4,6 +4,7 @@ import com.example.bububackend.DTO.CartProductRow;
 import com.example.bububackend.model.ProductDetail;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,6 +27,15 @@ public interface ProductDetailRepository extends JpaRepository<ProductDetail, In
             + "where d.id in :ids")
     List<CartProductRow> findCartRows(@Param("ids") Collection<Integer> ids);
 
+    // Trừ kho NGUYÊN TỬ: chỉ trừ khi còn đủ hàng. Trả về số dòng đã cập nhật (0 = không đủ hàng).
+    @Modifying
+    @Query("update ProductDetail d set d.quantity = d.quantity - :qty where d.id = :id and d.quantity >= :qty")
+    int decreaseStock(@Param("id") int id, @Param("qty") int qty);
+
+    // Cộng kho lại (khi hủy đơn)
+    @Modifying
+    @Query("update ProductDetail d set d.quantity = d.quantity + :qty where d.id = :id")
+    int increaseStock(@Param("id") int id, @Param("qty") int qty);
 
     // Xóa toàn bộ biến thể của một sản phẩm (gọi trước khi xóa sản phẩm)
     @Transactional

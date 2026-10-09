@@ -110,7 +110,7 @@
         if (!res.ok) {
             // Cố đọc thông báo lỗi mà backend trả về (message / error / detail) để hiện cho người dùng
             let msg = 'Lỗi ' + res.status;
-            try { const b = await res.json(); msg = b.message || b.error || b.detail || msg; } catch (_) { /* không có JSON thì giữ mã lỗi */ }
+            try { const b = await res.json(); msg = b.errorMessage || b.message || b.error || b.detail || msg; } catch (_) { /* không có JSON thì giữ mã lỗi */ }
             throw new Error(msg);
         }
         return res.status === 204 ? null : res.json();

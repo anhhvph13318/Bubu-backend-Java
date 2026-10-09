@@ -67,8 +67,7 @@ loginForm.addEventListener("submit", async function (event) {
         });
 
 
-        const data = await response.json();
-
+        const result = await response.json();
 
         /* ==============================
            ĐĂNG NHẬP THẤT BẠI
@@ -101,12 +100,15 @@ loginForm.addEventListener("submit", async function (event) {
            ĐĂNG NHẬP THÀNH CÔNG
            ============================== */
 
-        if (data.role === "ADMIN") {
-
-            // Admin: lưu vào currentAccount cho các trang quản trị dùng
-            sessionStorage.setItem("currentAccount", JSON.stringify(data));
-            window.location.href = "/admin/index.html";
-            return;
+        if (result.success) {
+            const data = result.data;
+            if (data.role === "ADMIN")
+            {
+                // Admin: lưu vào currentAccount cho các trang quản trị dùng
+                sessionStorage.setItem("currentAccount", JSON.stringify(data));
+                window.location.href = "/admin/index.html";
+                return;
+            }
         }
 
         // Khách hàng dùng ứng dụng BuBu (Flutter), không dùng trang quản trị.

@@ -4,6 +4,7 @@ import com.example.bububackend.DTO.CartItemsRequest;
 import com.example.bububackend.DTO.CartView;
 import com.example.bububackend.DTO.ItemRequest;
 import com.example.bububackend.DTO.UpdateQuantityRequest;
+import com.example.bububackend.response.ApiResponse;
 import com.example.bububackend.service.CartService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,34 +21,168 @@ public class CartController {
     }
 
     // GET /api/carts/{accountId} - giỏ của khách đã đăng nhập (chưa có thì trả giỏ rỗng)
+
     @GetMapping("/{accountId}")
-    public CartView getCart(@PathVariable int accountId) {
-        return service.getCart(accountId);
+    public ResponseEntity<ApiResponse<CartView>> getCart(
+            @PathVariable int accountId) {
+        try {
+            CartView cart = service.getCart(accountId);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            cart,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // POST /api/carts/{accountId}/items - thêm sản phẩm vào giỏ, body: {"productDetailId": 5, "quantity": 1}. Trả 201.
+
     @PostMapping("/{accountId}/items")
-    public ResponseEntity<CartView> addItem(@PathVariable int accountId, @RequestBody ItemRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.addItem(accountId, request));
+    public ResponseEntity<ApiResponse<CartView>> addItem(
+            @PathVariable int accountId,
+            @RequestBody ItemRequest request) {
+        try {
+            CartView cart = service.addItem(accountId, request);
+
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(
+                            new ApiResponse<>(
+                                    cart,
+                                    true,
+                                    null,
+                                    null
+                            )
+                    );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // PUT /api/carts/{accountId}/items/{productDetailId} - đổi số lượng, body: {"quantity": 3}
+
     @PutMapping("/{accountId}/items/{productDetailId}")
-    public CartView updateQuantity(@PathVariable int accountId, @PathVariable int productDetailId,
-                                   @RequestBody UpdateQuantityRequest request) {
-        return service.updateQuantity(accountId, productDetailId, request.quantity());
+    public ResponseEntity<ApiResponse<CartView>> updateQuantity(
+            @PathVariable int accountId,
+            @PathVariable int productDetailId,
+            @RequestBody UpdateQuantityRequest request) {
+        try {
+            CartView cart = service.updateQuantity(
+                    accountId,
+                    productDetailId,
+                    request.quantity()
+            );
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            cart,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // DELETE /api/carts/{accountId}/items/{productDetailId} - xóa một dòng khỏi giỏ
+
     @DeleteMapping("/{accountId}/items/{productDetailId}")
-    public CartView removeItem(@PathVariable int accountId, @PathVariable int productDetailId) {
-        return service.removeItem(accountId, productDetailId);
+    public ResponseEntity<ApiResponse<CartView>> removeItem(
+            @PathVariable int accountId,
+            @PathVariable int productDetailId) {
+        try {
+            CartView cart = service.removeItem(accountId, productDetailId);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            cart,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
+
 
     // DELETE /api/carts/{accountId}/items - xóa sạch giỏ
     @DeleteMapping("/{accountId}/items")
-    public CartView clear(@PathVariable int accountId) {
-        return service.clear(accountId);
+    public ResponseEntity<ApiResponse<CartView>> clear(
+            @PathVariable int accountId) {
+        try {
+            CartView cart = service.clear(accountId);
+
+            return ResponseEntity.ok(
+                    new ApiResponse<>(
+                            cart,
+                            true,
+                            null,
+                            null
+                    )
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ApiResponse<>(
+                                    null,
+                                    false,
+                                    e.getMessage(),
+                                    e.getClass().getSimpleName()
+                            )
+                    );
+        }
     }
 
     // POST /api/carts/{accountId}/merge - khi khách đăng nhập, gộp giỏ localStorage vào giỏ database.

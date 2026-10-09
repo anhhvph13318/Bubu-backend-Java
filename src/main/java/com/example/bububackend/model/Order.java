@@ -44,6 +44,13 @@ public class Order {
     @Column(name = "`CreatedAt`")
     private LocalDateTime createdAt;
 
+    @Column(name = "`AccountId`")
+    private Integer accountId; // null = khách vãng lai
+
+    public Integer getAccountId() { return accountId; }
+
+    public void setAccountId(Integer accountId) { this.accountId = accountId; }
+
 
     public int getId() {
         return id;

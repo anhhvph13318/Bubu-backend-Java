@@ -72,7 +72,14 @@ const logoutBtn =
 
 if (logoutBtn) {
 
-    logoutBtn.addEventListener("click", function () {
+    logoutBtn.addEventListener("click", async function () {
+
+        // Hủy phiên ở server
+        try {
+            await fetch("/api/auth/logout", { method: "POST" });
+        } catch (e) {
+            // mất mạng thì vẫn cho thoát ở trình duyệt
+        }
 
         // Xóa thông tin tài khoản đang đăng nhập
         sessionStorage.removeItem("currentAccount");

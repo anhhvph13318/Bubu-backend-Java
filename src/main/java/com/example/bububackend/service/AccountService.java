@@ -27,6 +27,10 @@ public class AccountService {
 
     public List<Account> findAll() { return repository.findAll(); }
 
+    public Account getById(int id) {
+        return find(id);
+    }
+
     // Tạo từ trang quản trị: luôn là ADMIN
     public Account createAccount(AccountRequest req) {
         return create(req, ROLE_ADMIN);

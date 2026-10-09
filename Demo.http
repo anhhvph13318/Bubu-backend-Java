@@ -1,7 +1,11 @@
-POST http://localhost:8080/api/auth/login
+POST http://localhost:8080/api/auth/register
 Content-Type: application/json
 
 {
-  "username": "khachhang",
-  "password": "123456"
+  "username": "guest2",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "email": "email2@gmail.com",
+  "fullName": "guest2",
+  "phone": "095357392"
 }
