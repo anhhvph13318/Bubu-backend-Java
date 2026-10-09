@@ -101,15 +101,21 @@ loginForm.addEventListener("submit", async function (event) {
            ĐĂNG NHẬP THÀNH CÔNG
            ============================== */
 
-        // Lưu thông tin tài khoản cho các trang admin sử dụng
-        sessionStorage.setItem(
-            "currentAccount",
-            JSON.stringify(data)
-        );
+        if (data.role === "ADMIN") {
 
+            // Admin: lưu vào currentAccount cho các trang quản trị dùng
+            sessionStorage.setItem("currentAccount", JSON.stringify(data));
+            window.location.href = "/admin/index.html";
+            return;
+        }
 
-        // Chuyển sang trang quản trị
-        window.location.href = "/admin/index.html";
+        // Khách hàng dùng ứng dụng BuBu (Flutter), không dùng trang quản trị.
+        // Không lưu gì vào trình duyệt.
+        loginMessage.textContent =
+            "Tài khoản này không có quyền vào trang quản trị. Vui lòng dùng ứng dụng BuBu để mua hàng.";
+
+        loginButton.disabled = false;
+        loginButton.textContent = "Đăng nhập";
 
     }
     catch (error) {

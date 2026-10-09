@@ -1,17 +1,24 @@
 const currentAccount = sessionStorage.getItem("currentAccount");
 
+let parsedAccount = null;
+try {
+    parsedAccount = currentAccount ? JSON.parse(currentAccount) : null;
+} catch (e) {
+    parsedAccount = null;
+}
+
 // ==============================
-// KIỂM TRA ĐĂNG NHẬP
+// KIỂM TRA ĐĂNG NHẬP VÀ QUYỀN ADMIN
 // ==============================
 
-if (!currentAccount) {
+if (!parsedAccount || parsedAccount.role !== "ADMIN") {
 
+    sessionStorage.removeItem("currentAccount");
     window.location.href = "/admin/login.html";
 
 } else {
 
-    // Chuyển chuỗi JSON thành object
-    const account = JSON.parse(currentAccount);
+    const account = parsedAccount;
 
 
     // ==============================

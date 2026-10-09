@@ -1,36 +1,7 @@
-#PUT http://localhost:8080/api/accounts/1
-#Content-Type: application/json
-#
-#{
-#  "userName": "admin",
-#  "fullName": "Quan tri vien",
-#  "passwordHash": "123",
-#  "active": true
-#}
-#
 POST http://localhost:8080/api/auth/login
 Content-Type: application/json
 
 {
-  "username": "admin",
+  "username": "khachhang",
   "password": "123456"
 }
-
-//#POST http://localhost:8080/api/orders
-//#Content-Type: application/json
-//#
-//#{
-//#  "customerName":"Vanh",
-//#  "phone":"0981032309",
-//#  "address":"Hà Tĩnh",
-//#  "note":"không",
-//#  "paymentMethod":0,
-//#  "items":[{"productDetailId":5,"quantity":2}]
-//#}
-
-//POST http://localhost:8080/api/carts/1/items
-//content-Type: application/json
-//
-//{
-//  "productDetailId": 5, "quantity": 1
-//}

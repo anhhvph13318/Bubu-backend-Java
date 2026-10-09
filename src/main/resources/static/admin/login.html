@@ -23,7 +23,7 @@
             </div>
         </div>
 
-        <div class="login-header">
+        <div class="login-header" id="loginHeader">
             <h2>Đăng nhập</h2>
             <p>Đăng nhập để tiếp tục quản lý cửa hàng</p>
         </div>
@@ -78,6 +78,66 @@
 
         </form>
 
+        <p class="switch-text" id="toRegisterText">
+            Chưa có tài khoản?
+            <button type="button" id="showRegister" class="link-button">Đăng ký</button>
+        </p>
+
+        <div id="registerSection" hidden>
+
+            <div class="login-header">
+                <h2>Đăng ký</h2>
+                <p>Tạo tài khoản mới</p>
+            </div>
+
+            <form id="registerForm">
+
+                <div class="form-group">
+                    <label for="regFullName">Họ và tên</label>
+                    <input type="text" id="regFullName" placeholder="Nhập họ và tên" autocomplete="name">
+                </div>
+
+                <div class="form-group">
+                    <label for="regUsername">Tên đăng nhập</label>
+                    <input type="text" id="regUsername" placeholder="Chữ không dấu, số, . _ @ -"
+                           autocomplete="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="regEmail">Email</label>
+                    <input type="email" id="regEmail" placeholder="Nhập email" autocomplete="email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="regPhone">Số điện thoại</label>
+                    <input type="tel" id="regPhone" placeholder="Nhập số điện thoại" autocomplete="tel" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="regPassword">Mật khẩu</label>
+                    <input type="password" id="regPassword" placeholder="Tối thiểu 6 ký tự"
+                           autocomplete="new-password" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="regConfirmPassword">Nhập lại mật khẩu</label>
+                    <input type="password" id="regConfirmPassword" placeholder="Nhập lại mật khẩu"
+                           autocomplete="new-password" required>
+                </div>
+
+                <div id="registerMessage" class="login-message"></div>
+
+                <button type="submit" id="registerButton" class="login-button">Đăng ký</button>
+
+            </form>
+
+            <p class="switch-text">
+                Đã có tài khoản?
+                <button type="button" id="showLogin" class="link-button">Đăng nhập</button>
+            </p>
+
+        </div>
+
         <div class="login-footer">
             <span>BuBu Sport Management System</span>
         </div>
@@ -87,6 +147,7 @@
 </div>
 
 <script src="Js/login.js"></script>
+<script src="Js/register.js"></script>
 
 </body>
 </html>

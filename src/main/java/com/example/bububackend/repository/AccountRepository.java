@@ -7,8 +7,10 @@ import java.util.Optional;
 
 public interface AccountRepository extends JpaRepository<Account, Integer> {
     boolean existsByUserNameIgnoreCase(String userName);
+    boolean existsByEmailIgnoreCase(String email);
+
     // Số tài khoản đang hoạt động - dùng để không cho khóa / xóa tài khoản hoạt động cuối cùng
-    long countByActiveTrue();
+    long countByActiveTrueAndRole(String role);
 
     Optional<Account> findByUserName(String userName);
 }
