@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.security.SecureRandom;
+import java.util.Objects;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -153,6 +155,7 @@ public class OrderService {
         Order order = new Order();
         order.setOrderCode("T" + UUID.randomUUID().toString().substring(0, 7));
         order.setAccountId(accountId);
+        order.setTrackingCode(newTrackingCode());
         order.setCustomerName(name);
         order.setPhone(phone);
         order.setAddress(address);
@@ -190,7 +193,7 @@ public class OrderService {
         }
     }
 
-    private static String label(int status) {
+    public static String label(int status) {
         return status >= 0 && status < STATUS_LABELS.length ? STATUS_LABELS[status] : "Trạng thái " + status;
     }
 
@@ -204,5 +207,46 @@ public class OrderService {
 
     private static ResponseStatusException bad(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    }
+
+    // ---------- Mã tra cứu và khách tự hủy đơn ----------
+
+    // Mã tra cứu: 12 ký tự ngẫu nhiên (bỏ I, O, 0, 1 cho dễ đọc), không đoán được.
+    private static final String TRACKING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    private String newTrackingCode() {
+        String code;
+        do {
+            StringBuilder sb = new StringBuilder(12);
+            for (int i = 0; i < 12; i++) {
+                sb.append(TRACKING_ALPHABET.charAt(RANDOM.nextInt(TRACKING_ALPHABET.length())));
+            }
+            code = sb.toString();
+        } while (orderRepository.existsByTrackingCode(code));
+        return code;
+    }
+
+    /**
+     * Khách tự hủy đơn của mình: chỉ khi đơn đang "Chờ xác nhận" và chưa thanh toán online.
+     * Đơn của người khác coi như không tồn tại (404). Hủy thì cộng tồn kho lại.
+     * Khóa dòng đơn nên nếu admin vừa xác nhận cùng lúc thì chỉ một bên thắng.
+     */
+    @Transactional
+    public Order cancelByCustomer(int accountId, int orderId) {
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .filter(o -> Objects.equals(o.getAccountId(), accountId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng"));
+
+        if (order.getStatus() != STATUS_PENDING) {
+            throw bad("Chỉ hủy được đơn đang \"Chờ xác nhận\" (đơn này đang \"" + label(order.getStatus()) + "\")");
+        }
+        if (order.getPaymentStatus() != 0) {
+            throw bad("Đơn đã thanh toán online, vui lòng liên hệ cửa hàng để được hỗ trợ hoàn tiền");
+        }
+
+        restoreStock(orderId);
+        order.setStatus(STATUS_CANCELLED);
+        return orderRepository.save(order);
     }
 }

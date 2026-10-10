@@ -47,10 +47,16 @@ public class Order {
     @Column(name = "`AccountId`")
     private Integer accountId; // null = khách vãng lai
 
+    @Column(name = "`TrackingCode`")
+    private String trackingCode; // mã ngẫu nhiên để khách tra cứu đơn
+
+    public String getTrackingCode() { return trackingCode; }
+
+    public void setTrackingCode(String trackingCode) { this.trackingCode = trackingCode; }
+
     public Integer getAccountId() { return accountId; }
 
     public void setAccountId(Integer accountId) { this.accountId = accountId; }
-
 
     public int getId() {
         return id;

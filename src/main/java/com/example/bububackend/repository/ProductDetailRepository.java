@@ -40,4 +40,8 @@ public interface ProductDetailRepository extends JpaRepository<ProductDetail, In
     // Xóa toàn bộ biến thể của một sản phẩm (gọi trước khi xóa sản phẩm)
     @Transactional
     void deleteByProductId(int productId);
+
+    // Tổng tồn kho theo từng sản phẩm: mỗi dòng là [productId, tổng số lượng]
+    @Query("select d.productId, sum(d.quantity) from ProductDetail d where d.productId in :ids group by d.productId")
+    List<Object[]> sumQuantityByProductIds(@Param("ids") Collection<Integer> ids);
 }

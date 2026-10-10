@@ -6,6 +6,9 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
@@ -25,6 +28,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             "/api/auth/register",
             "/api/auth/logout",
             "/api/carts/preview",
+            "/api/favorites/preview",
             "/api/orders");
 
     // GET không cần đăng nhập (khách xem hàng)
@@ -34,7 +38,8 @@ public class AuthInterceptor implements HandlerInterceptor {
             "/api/sizes",
             "/api/colors",
             "/api/product-details",
-            "/api/images");
+            "/api/images",
+            "/api/orders/track");
 
     // /api/carts/{accountId} hoặc /api/carts/{accountId}/...
     private static final Pattern CART_PATH = Pattern.compile("^/api/carts/(\\d{1,9})(/.*)?$");
@@ -79,8 +84,26 @@ public class AuthInterceptor implements HandlerInterceptor {
             return deny(response, 403, "Forbidden", "Bạn không có quyền truy cập giỏ hàng này");
         }
 
-        // 4. Xem thông tin tài khoản đang đăng nhập, và đặt hàng: ai đăng nhập cũng được
-        if (path.equals("/api/auth/me")) {
+        // 4. Việc của chính tài khoản đang đăng nhập: ai đăng nhập cũng được
+        //    - xem / sửa thông tin cá nhân, đổi mật khẩu
+        //    - xem lịch sử đơn của mình (service tự kiểm tra đơn có thuộc tài khoản này không)
+        if (path.equals("/api/auth/me") && ("GET".equals(method) || "PUT".equals(method))) {
+            return true;
+        }
+        if (path.equals("/api/auth/password") && "PUT".equals(method)) {
+            return true;
+        }
+        if ("GET".equals(method) && (path.equals("/api/orders/my") || path.startsWith("/api/orders/my/"))) {
+            return true;
+        }
+
+        // 4b. Yêu thích: ai đăng nhập cũng được (service chỉ dùng accountId của chính session)
+        if (path.equals("/api/favorites") || path.startsWith("/api/favorites/")) {
+            return true;
+        }
+
+        // 4c. Khách đã đăng nhập tự hủy đơn của mình (service kiểm tra đơn có đúng của họ không)
+        if ("POST".equals(method) && path.matches("^/api/orders/my/\\d{1,9}/cancel$")) {
             return true;
         }
 
@@ -112,5 +135,15 @@ public class AuthInterceptor implements HandlerInterceptor {
         response.getWriter().write(
                 "{\"status\":" + status + ",\"error\":\"" + error + "\",\"message\":\"" + message + "\"}");
         return false;
+    }
+
+    // accountId của phiên đăng nhập; chưa đăng nhập thì ném 401
+    public static int requireAccountId(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        Integer id = session == null ? null : (Integer) session.getAttribute(SESSION_ACCOUNT_ID);
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Vui lòng đăng nhập");
+        }
+        return id;
     }
 }

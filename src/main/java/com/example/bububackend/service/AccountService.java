@@ -1,4 +1,6 @@
 package com.example.bububackend.service;
+import com.example.bububackend.model.ChangePasswordRequest;
+import com.example.bububackend.model.ProfileRequest;
 
 import com.example.bububackend.model.Account;
 import com.example.bububackend.model.AccountRequest;
@@ -99,6 +101,59 @@ public class AccountService {
         return repository.save(a);
     }
 
+    // Khách tự sửa thông tin cá nhân. Không đổi được tên đăng nhập, role, trạng thái.
+    // Khách (CUSTOMER) bắt buộc phải còn email và số điện thoại, giống lúc đăng ký.
+    public Account updateProfile(int accountId, ProfileRequest req) {
+        Account a = find(accountId);
+        requireActive(a);
+
+        String email = cleanEmail(req.getEmail(), accountId);
+        String phone = cleanPhone(req.getPhone());
+        if (ROLE_CUSTOMER.equals(a.getRole())) {
+            if (email == null) {
+                throw bad("Vui lòng nhập email");
+            }
+            if (phone == null) {
+                throw bad("Vui lòng nhập số điện thoại");
+            }
+        }
+
+        a.setFullName(cleanFullName(req.getFullName()));
+        a.setEmail(email);
+        a.setPhone(phone);
+        return repository.save(a);
+    }
+
+    // Đổi mật khẩu: phải nhập đúng mật khẩu hiện tại.
+    // Sai mật khẩu hiện tại trả 400 (không phải 401) để ứng dụng không hiểu nhầm là hết phiên đăng nhập.
+    public void changePassword(int accountId, ChangePasswordRequest req) {
+        Account a = find(accountId);
+        requireActive(a);
+
+        String current = req.getCurrentPassword();
+        if (current == null || current.isEmpty()) {
+            throw bad("Vui lòng nhập mật khẩu hiện tại");
+        }
+        if (!hashPassword(current).equals(a.getPasswordHash())) {
+            throw bad("Mật khẩu hiện tại không đúng");
+        }
+        checkPassword(req.getNewPassword());
+        if (req.getConfirmPassword() != null && !req.getConfirmPassword().equals(req.getNewPassword())) {
+            throw bad("Mật khẩu nhập lại không khớp");
+        }
+        if (req.getNewPassword().equals(current)) {
+            throw bad("Mật khẩu mới phải khác mật khẩu hiện tại");
+        }
+        a.setPasswordHash(hashPassword(req.getNewPassword()));
+        repository.save(a);
+    }
+
+    private void requireActive(Account a) {
+        if (!a.isActive()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản đã bị khóa");
+        }
+    }
+
     public void deleteAccount(int id) {
         Account a = find(id);
         if (a.isActive()) {
@@ -152,14 +207,22 @@ public class AccountService {
         return t.length() > 100 ? t.substring(0, 100) : t;
     }
 
-    // Email: bỏ khoảng trắng, rỗng thì null; sai định dạng hoặc đã dùng thì báo lỗi
     private String cleanEmail(String s) {
+        return cleanEmail(s, null);
+    }
+
+    // Email: bỏ khoảng trắng, rỗng thì null; sai định dạng hoặc đã dùng thì báo lỗi.
+    // selfId: id tài khoản đang sửa (bỏ qua chính nó khi kiểm tra trùng); null khi tạo mới.
+    private String cleanEmail(String s, Integer selfId) {
         if (s == null || s.isBlank()) return null;
         String email = s.trim();
         if (email.length() > 100 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             throw bad("Email không hợp lệ");
         }
-        if (repository.existsByEmailIgnoreCase(email)) {
+        boolean taken = selfId == null
+                ? repository.existsByEmailIgnoreCase(email)
+                : repository.existsByEmailIgnoreCaseAndIdNot(email, selfId);
+        if (taken) {
             throw bad("Email \"" + email + "\" đã được sử dụng");
         }
         return email;

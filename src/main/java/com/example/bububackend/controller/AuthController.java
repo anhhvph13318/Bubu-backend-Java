@@ -1,4 +1,6 @@
 package com.example.bububackend.controller;
+import com.example.bububackend.model.ChangePasswordRequest;
+import com.example.bububackend.model.ProfileRequest;
 
 import com.example.bububackend.config.AuthInterceptor;
 import com.example.bububackend.model.Account;
@@ -118,6 +120,24 @@ public class AuthController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tài khoản đã bị khóa");
         }
         return toResponse(account);
+    }
+
+    // Khách tự sửa họ tên, email, số điện thoại. Trả lại thông tin mới.
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponse<LoginResponse>> updateMe(@RequestBody ProfileRequest request,
+                                                               HttpServletRequest http) {
+        int accountId = AuthInterceptor.requireAccountId(http);
+        Account account = accountService.updateProfile(accountId, request);
+        return ResponseEntity.ok(new ApiResponse<>(toResponse(account), true, null, null));
+    }
+
+    // Đổi mật khẩu. body: {"currentPassword":"...", "newPassword":"...", "confirmPassword":"..."}
+    @PutMapping("/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(@RequestBody ChangePasswordRequest request,
+                                                            HttpServletRequest http) {
+        int accountId = AuthInterceptor.requireAccountId(http);
+        accountService.changePassword(accountId, request);
+        return ResponseEntity.ok(new ApiResponse<>(null, true, null, null));
     }
 
     // Hủy phiên cũ rồi tạo phiên mới (tránh dùng lại session id cũ), lưu accountId và role
