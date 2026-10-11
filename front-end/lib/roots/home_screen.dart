@@ -1,4 +1,5 @@
 import 'package:bubu_web_client/models/product_model.dart';
+import 'package:bubu_web_client/roots/product_detail_screen.dart';
 import 'package:bubu_web_client/services/product_service.dart';
 import 'package:bubu_web_client/widgets/banner_widget.dart';
 import 'package:bubu_web_client/widgets/footer_widget.dart';
@@ -152,14 +153,26 @@ class _HomeScreenState extends State<HomeScreen>
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: products.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              crossAxisSpacing: 20,
-              mainAxisSpacing: 20,
-              childAspectRatio: 0.76,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 250, // chiều rộng tối đa mỗi card
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 0.72,
             ),
-            itemBuilder: (context, index) =>
-                ProductCardWidget(product: products[index]),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ProductDetailScreen(product: product),
+                    ),
+                  );
+                },
+                child: ProductCardWidget(product: product),
+              );
+            },
           )
         : Padding(
             padding: EdgeInsets.symmetric(vertical: 48),
