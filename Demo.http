@@ -1,11 +1,19 @@
 #GET http://localhost:8080/api/favorites
+#POST http://localhost:8080/api/auth/login
+#content-Type: application/json
+#
+#{
+#  "username": "guest",
+#  "password": "123456"
+#}
 
 POST http://localhost:8080/api/carts/1/items
 content-Type: application/json
 
 {
-  "productDetailId": "6",
+  "productDetailId": "5",
   "quantity": "1"
 }
+
 
 
