@@ -20,14 +20,14 @@ enum SortOption {
   const SortOption(this.label, this.icon);
 }
 
-class ProductScreenV2 extends StatefulWidget {
-  const ProductScreenV2({super.key});
+class ProductScreen extends StatefulWidget {
+  const ProductScreen({super.key});
 
   @override
-  State<ProductScreenV2> createState() => _ProductScreenV2State();
+  State<ProductScreen> createState() => _ProductScreenState();
 }
 
-class _ProductScreenV2State extends State<ProductScreenV2>
+class _ProductScreenState extends State<ProductScreen>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;

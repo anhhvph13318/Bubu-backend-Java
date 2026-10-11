@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:developer';
-
 import 'package:bubu_web_client/models/product_model.dart';
 
 import '../utils/global.dart';
@@ -32,7 +29,6 @@ class ProductService {
     final String url = "$baseUrl/api/products/$productID";
     try {
       final response = await httpService.get(url);
-      log(jsonEncode(response));
       return ProductDetailResponse.fromJson(response);
     } catch (e) {
       return ProductDetailResponse("FAIL", e.toString());

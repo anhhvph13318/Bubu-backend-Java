@@ -3,81 +3,11 @@ import 'package:bubu_web_client/widgets/footer_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:toastification/toastification.dart';
 
+import '../models/order_model.dart';
+import '../services/order_service.dart';
 import '../utils/global.dart';
+import '../widgets/vnpay_dialog.dart';
 
-// ======================================================================
-// MODEL + STORE (tách ra file riêng, ví dụ models/cart_model.dart, nếu muốn)
-// Hiện lưu trong bộ nhớ; khi có API giỏ hàng thì thay phần thân các hàm.
-// ======================================================================
-class CartItem {
-  final int id; // productDetailId (id của biến thể size + màu)
-  final int productId;
-  final String name;
-  final String imageUrl;
-  final String size;
-  final String color;
-  final int price;
-  final int qty;
-  final int maxQty;
-
-  const CartItem({
-    required this.id,
-    required this.productId,
-    required this.name,
-    required this.imageUrl,
-    required this.size,
-    required this.color,
-    required this.price,
-    required this.qty,
-    this.maxQty = 10,
-  });
-
-  CartItem copyWith({int? qty}) => CartItem(
-    id: id,
-    productId: productId,
-    name: name,
-    imageUrl: imageUrl,
-    size: size,
-    color: color,
-    price: price,
-    qty: qty ?? this.qty,
-    maxQty: maxQty,
-  );
-}
-
-class CartStore {
-  static final ValueNotifier<List<CartItem>> items = ValueNotifier([]);
-
-  static int get count => items.value.fold(0, (s, e) => s + e.qty);
-
-  static void add(CartItem item) {
-    final list = [...items.value];
-    final i = list.indexWhere((e) => e.id == item.id);
-    if (i >= 0) {
-      final merged = (list[i].qty + item.qty).clamp(1, list[i].maxQty);
-      list[i] = list[i].copyWith(qty: merged);
-    } else {
-      list.add(item);
-    }
-    items.value = list;
-  }
-
-  static void setQty(int id, int qty) {
-    items.value = [
-      for (final e in items.value) e.id == id ? e.copyWith(qty: qty) : e,
-    ];
-  }
-
-  static void remove(int id) {
-    items.value = items.value.where((e) => e.id != id).toList();
-  }
-
-  static void clear() => items.value = [];
-}
-
-// ======================================================================
-// MÀN HÌNH GIỎ HÀNG
-// ======================================================================
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
 
@@ -94,19 +24,89 @@ class _CartScreenState extends State<CartScreen> {
   static const int freeShipFrom = 500000;
   static const int shippingFee = 30000;
 
+  // Phương thức thanh toán (khớp với paymentMethod của backend)
+  static const int payCod = 0; // thanh toán khi nhận hàng
+  static const int payOnline = 1; // thanh toán trực tuyến
+
+  final OrderService service = OrderService();
   final voucherController = TextEditingController();
+
+  // Thông tin nhận hàng
+  final nameController = TextEditingController();
+  final phoneController = TextEditingController();
+  final addressController = TextEditingController();
+  final noteController = TextEditingController();
+  int paymentMethod = payCod;
+  bool submitting = false;
+
+  List<CartViewItem> items = [];
+  bool loading = true;
+
   int discountPercent = 0;
   String appliedCode = '';
 
   @override
+  void initState() {
+    super.initState();
+    // Đã đăng nhập thì điền sẵn tên và số điện thoại
+    if (isLoggedIn) {
+      nameController.text = loginResponse.fullName;
+      phoneController.text = loginResponse.phone;
+    }
+    loadCart();
+  }
+
+  @override
   void dispose() {
     voucherController.dispose();
+    nameController.dispose();
+    phoneController.dispose();
+    addressController.dispose();
+    noteController.dispose();
     super.dispose();
   }
 
-  // ---------- tính tiền ----------
-  int subtotal(List<CartItem> items) =>
-      items.fold(0, (s, e) => s + e.price * e.qty);
+  // ===================== GỌI API =====================
+  Future<void> loadCart() async {
+    final res = await service.getCart();
+    if (!mounted) return;
+    if (res.errorMessage.isEmpty) {
+      cartCount.value = res.cart.totalQuantity;
+      setState(() {
+        items = res.cart.items;
+        loading = false;
+      });
+    } else {
+      setState(() => loading = false);
+      showToast(res.errorMessage, ToastificationType.error);
+    }
+  }
+
+  Future<void> _apply(Future<CartResponse> call) async {
+    final res = await call;
+    if (!mounted) return;
+    if (res.errorMessage.isEmpty) {
+      cartCount.value = res.cart.totalQuantity;
+      setState(() => items = res.cart.items);
+    } else {
+      showToast(res.errorMessage, ToastificationType.error);
+    }
+  }
+
+  void setQty(CartViewItem item, int qty) =>
+      _apply(service.updateQuantity(item.productDetailId, qty));
+
+  void removeItem(CartViewItem item) =>
+      _apply(service.removeItem(item.productDetailId));
+
+  void clearAll() {
+    _apply(service.clearCart());
+    removeVoucher();
+  }
+
+  // ===================== TÍNH TIỀN =====================
+  int subtotal(List<CartViewItem> items) =>
+      items.fold(0, (s, e) => s + e.price * e.quantity);
 
   int shipping(int sub) => (sub == 0 || sub >= freeShipFrom) ? 0 : shippingFee;
 
@@ -115,7 +115,6 @@ class _CartScreenState extends State<CartScreen> {
   void applyVoucher() {
     final code = voucherController.text.trim().toUpperCase();
     if (code.isEmpty) return;
-    // TODO: gọi API kiểm tra mã giảm giá
     if (code == 'BUBU10') {
       setState(() {
         discountPercent = 10;
@@ -135,79 +134,261 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
 
-  void checkout() {
-    // TODO: chuyển sang màn hình thanh toán / gọi API tạo đơn
-    showToast('Chuyển tới thanh toán...', ToastificationType.info);
+  // ===================== ĐẶT HÀNG =====================
+  Future<void> checkout() async {
+    if (submitting || items.isEmpty) return;
+
+    final name = nameController.text.trim();
+    final phone = phoneController.text.replaceAll(RegExp(r'\s'), '');
+    final address = addressController.text.trim();
+    final note = noteController.text.trim();
+
+    if (name.isEmpty) {
+      showToast('Vui lòng nhập họ tên người nhận', ToastificationType.warning);
+      return;
+    }
+    if (!RegExp(r'^(0|\+84)\d{9}$').hasMatch(phone)) {
+      showToast('Số điện thoại không hợp lệ', ToastificationType.warning);
+      return;
+    }
+    if (address.isEmpty) {
+      showToast('Vui lòng nhập địa chỉ nhận hàng', ToastificationType.warning);
+      return;
+    }
+    if (items.any((e) => !e.available)) {
+      showToast(
+        'Giỏ hàng có sản phẩm không còn khả dụng, vui lòng kiểm tra lại',
+        ToastificationType.warning,
+      );
+      return;
+    }
+
+    setState(() => submitting = true);
+
+    final method = paymentMethod;
+    final res = await service.createOrder(
+      CreateOrderRequest(
+        customerName: name,
+        phone: phone,
+        address: address,
+        note: note,
+        paymentMethod: method,
+        items: items
+            .map((e) => ItemRequest(e.productDetailId, e.quantity))
+            .toList(),
+      ),
+    );
+    if (!mounted) return;
+
+    if (res.errorMessage.isNotEmpty) {
+      setState(() => submitting = false);
+      showToast(res.errorMessage, ToastificationType.error);
+      return;
+    }
+
+    // Đơn đã được tạo trên server: dọn giỏ ngay (cả COD lẫn VNPay)
+    // để khách không thể bấm đặt lại và tạo trùng đơn.
+    await _apply(service.clearCart());
+    if (!mounted) return;
+    removeVoucher();
+
+    if (method == payOnline) {
+      await _payOnline(res.order);
+    } else {
+      await _showSuccess(res.order, method);
+    }
+    if (!mounted) return;
+    setState(() => submitting = false);
   }
 
-  // ---------- build ----------
+  Future<void> _payOnline(Order order) async {
+    if (order.trackingCode.isEmpty) {
+      showToast(
+        'Đơn ${order.orderCode} đã được tạo nhưng không nhận được mã tra cứu '
+        'để thanh toán. Vui lòng liên hệ cửa hàng.',
+        ToastificationType.error,
+      );
+      return;
+    }
+
+    final link = await service.createVnpayLink(order.trackingCode);
+    if (!mounted) return;
+    if (link.errorMessage.isNotEmpty || link.paymentUrl.isEmpty) {
+      showToast(
+        'Đơn ${order.orderCode} đã được tạo nhưng chưa tạo được liên kết '
+        'thanh toán. Vui lòng liên hệ cửa hàng.',
+        ToastificationType.error,
+      );
+      return;
+    }
+
+    final result = await showDialog<PayResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => VnpayDialog(
+        service: service,
+        trackingCode: order.trackingCode,
+        orderCode: order.orderCode,
+        paymentUrl: link.paymentUrl,
+      ),
+    );
+    if (!mounted) return;
+
+    switch (result) {
+      case PayResult.paid:
+        await _showSuccess(order, payOnline);
+      case PayResult.failed:
+        showToast(
+          'Thanh toán không thành công, đơn ${order.orderCode} đã bị hủy. '
+          'Bạn có thể chọn lại sản phẩm để đặt đơn mới.',
+          ToastificationType.error,
+        );
+      default:
+        showToast(
+          'Đơn ${order.orderCode} đang chờ thanh toán. Vui lòng không đặt lại '
+          'để tránh trùng đơn, nếu đã thanh toán đơn sẽ được cập nhật sau ít phút.',
+          ToastificationType.info,
+        );
+    }
+  }
+
+  Future<void> _showSuccess(Order order, int method) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 10),
+            Text(
+              'Đặt hàng thành công',
+              style: TextStyle(fontWeight: FontWeight.w800, color: _ink),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Mã đơn hàng: ${order.orderCode}',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: _ink,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tổng tiền: ${order.totalAmount.toInt().formatThousand()}',
+              style: const TextStyle(fontSize: 14.5, color: _ink),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              method == payCod
+                  ? 'Bạn sẽ thanh toán khi nhận hàng.'
+                  : 'Đơn hàng đã được thanh toán qua VNPay.',
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            style: FilledButton.styleFrom(
+              backgroundColor: _ink,
+              shape: const StadiumBorder(),
+            ),
+            child: const Text('Tiếp tục mua sắm'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    Navigator.of(context).maybePop();
+  }
+
+  // ===================== BUILD =====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: ValueListenableBuilder<List<CartItem>>(
-        valueListenable: CartStore.items,
-        builder: (context, items, _) {
-          return LayoutBuilder(
-            builder: (context, viewport) {
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  // nội dung ngắn hơn màn hình thì vẫn cao bằng màn hình
-                  constraints: BoxConstraints(minHeight: viewport.maxHeight),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // ----- Phần nội dung -----
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 56),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1200),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _header(items),
-                                const SizedBox(height: 20),
-                                if (items.isEmpty)
-                                  _emptyState()
-                                else
-                                  LayoutBuilder(
-                                    builder: (context, c) {
-                                      final narrow = c.maxWidth < 900;
-                                      final list = _itemList(items);
-                                      final summary = _summary(items);
-                                      if (narrow) {
-                                        return Column(
-                                          children: [
-                                            list,
-                                            const SizedBox(height: 24),
-                                            summary,
-                                          ],
-                                        );
-                                      }
-                                      return Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(flex: 7, child: list),
-                                          const SizedBox(width: 32),
-                                          Expanded(flex: 4, child: summary),
-                                        ],
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
+      body: LayoutBuilder(
+        builder: (context, viewport) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              // nội dung ngắn hơn màn hình thì vẫn cao bằng màn hình
+              constraints: BoxConstraints(minHeight: viewport.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // ----- Phần nội dung -----
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 56),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1200),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _header(items),
+                            const SizedBox(height: 20),
+                            if (loading)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 80),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            else if (items.isEmpty)
+                              _emptyState()
+                            else
+                              LayoutBuilder(
+                                builder: (context, c) {
+                                  final narrow = c.maxWidth < 900;
+                                  // bên trái: danh sách sản phẩm + thông tin nhận hàng
+                                  final list = Column(
+                                    children: [
+                                      _itemList(items),
+                                      const SizedBox(height: 24),
+                                      _checkoutForm(),
+                                    ],
+                                  );
+                                  final summary = _summary(items);
+                                  if (narrow) {
+                                    return Column(
+                                      children: [
+                                        list,
+                                        const SizedBox(height: 24),
+                                        summary,
+                                      ],
+                                    );
+                                  }
+                                  return Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(flex: 7, child: list),
+                                      const SizedBox(width: 32),
+                                      Expanded(flex: 4, child: summary),
+                                    ],
+                                  );
+                                },
+                              ),
+                          ],
                         ),
                       ),
-
-                      const FooterWidget(),
-                    ],
+                    ),
                   ),
-                ),
-              );
-            },
+
+                  const FooterWidget(),
+                ],
+              ),
+            ),
           );
         },
       ),
@@ -215,8 +396,8 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   // ---------- header ----------
-  Widget _header(List<CartItem> items) {
-    final count = items.fold(0, (s, e) => s + e.qty);
+  Widget _header(List<CartViewItem> items) {
+    final count = items.fold(0, (s, e) => s + e.quantity);
     return Row(
       children: [
         InkWell(
@@ -276,7 +457,7 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   // ---------- danh sách ----------
-  Widget _itemList(List<CartItem> items) {
+  Widget _itemList(List<CartViewItem> items) {
     final sub = subtotal(items);
     final remain = freeShipFrom - sub;
 
@@ -336,10 +517,7 @@ class _CartScreenState extends State<CartScreen> {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
-            onPressed: () {
-              CartStore.clear();
-              removeVoucher();
-            },
+            onPressed: clearAll,
             icon: const Icon(Icons.delete_sweep_outlined, size: 18),
             label: const Text('Xóa tất cả'),
             style: TextButton.styleFrom(foregroundColor: Colors.grey.shade600),
@@ -349,7 +527,7 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _itemCard(CartItem item) {
+  Widget _itemCard(CartViewItem item) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -407,7 +585,7 @@ class _CartScreenState extends State<CartScreen> {
                       ),
                       InkWell(
                         borderRadius: BorderRadius.circular(20),
-                        onTap: () => CartStore.remove(item.id),
+                        onTap: () => removeItem(item),
                         child: Padding(
                           padding: const EdgeInsets.all(4),
                           child: Icon(
@@ -465,7 +643,7 @@ class _CartScreenState extends State<CartScreen> {
     ),
   );
 
-  Widget _qtyStepper(CartItem item) {
+  Widget _qtyStepper(CartViewItem item) {
     Widget btn(IconData icon, VoidCallback? onTap) => InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
@@ -489,12 +667,12 @@ class _CartScreenState extends State<CartScreen> {
         children: [
           btn(
             Icons.remove_rounded,
-            item.qty > 1 ? () => CartStore.setQty(item.id, item.qty - 1) : null,
+            item.quantity > 1 ? () => setQty(item, item.quantity - 1) : null,
           ),
           SizedBox(
             width: 26,
             child: Text(
-              '${item.qty}',
+              '${item.quantity}',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 14.5,
@@ -505,8 +683,8 @@ class _CartScreenState extends State<CartScreen> {
           ),
           btn(
             Icons.add_rounded,
-            item.qty < item.maxQty
-                ? () => CartStore.setQty(item.id, item.qty + 1)
+            item.quantity < item.stock
+                ? () => setQty(item, item.quantity + 1)
                 : null,
           ),
         ],
@@ -514,8 +692,183 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
+  // ---------- thông tin nhận hàng + phương thức thanh toán ----------
+  Widget _checkoutForm() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Thông tin nhận hàng',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: _ink,
+            ),
+          ),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, c) {
+              final name = _field(
+                nameController,
+                'Họ và tên',
+                Icons.person_outline,
+              );
+              final phone = _field(
+                phoneController,
+                'Số điện thoại',
+                Icons.phone_outlined,
+                type: TextInputType.phone,
+              );
+              if (c.maxWidth < 520) {
+                return Column(
+                  children: [name, const SizedBox(height: 14), phone],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: name),
+                  const SizedBox(width: 14),
+                  Expanded(child: phone),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          _field(
+            addressController,
+            'Địa chỉ nhận hàng',
+            Icons.location_on_outlined,
+          ),
+          const SizedBox(height: 14),
+          _field(
+            noteController,
+            'Ghi chú (không bắt buộc)',
+            Icons.edit_note_rounded,
+            maxLines: 2,
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Phương thức thanh toán',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: _ink,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _payTile(
+            value: payCod,
+            icon: Icons.payments_outlined,
+            title: 'Thanh toán khi nhận hàng (COD)',
+            subtitle: 'Trả tiền mặt cho nhân viên giao hàng',
+          ),
+          const SizedBox(height: 10),
+          _payTile(
+            value: payOnline,
+            icon: Icons.credit_card_outlined,
+            title: 'Thanh toán trực tuyến',
+            subtitle: 'Thanh toán qua cổng thanh toán điện tử',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    TextInputType? type,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: type,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20),
+        filled: true,
+        fillColor: _soft,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _payTile({
+    required int value,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = paymentMethod == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => setState(() => paymentMethod = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? _pink.withValues(alpha: 0.06) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? _pink : _border,
+            width: selected ? 2 : 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: selected ? _pink : _ink),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: _ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              size: 22,
+              color: selected ? _pink : Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ---------- tóm tắt đơn hàng ----------
-  Widget _summary(List<CartItem> items) {
+  Widget _summary(List<CartViewItem> items) {
     final sub = subtotal(items);
     final ship = shipping(sub);
     final disc = discount(sub);
@@ -649,9 +1002,18 @@ class _CartScreenState extends State<CartScreen> {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: checkout,
-              icon: const Icon(Icons.lock_outline_rounded, size: 18),
-              label: const Text('Thanh toán'),
+              onPressed: submitting ? null : checkout,
+              icon: submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.lock_outline_rounded, size: 18),
+              label: Text(submitting ? 'Đang xử lý...' : 'Đặt hàng'),
               style: FilledButton.styleFrom(
                 backgroundColor: _ink,
                 minimumSize: const Size.fromHeight(54),

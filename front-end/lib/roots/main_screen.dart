@@ -1,5 +1,6 @@
 import 'package:bubu_web_client/roots/cart_screen.dart';
 import 'package:bubu_web_client/roots/login_screen.dart';
+import 'package:bubu_web_client/services/order_service.dart';
 import 'package:flutter/material.dart';
 import 'package:toastification/toastification.dart';
 
@@ -20,32 +21,35 @@ class _MainScreenState extends State<MainScreen> {
   final PageController pageController = PageController();
   final GlobalKey<NavigatorState> navKey = GlobalKey<NavigatorState>();
   int selectedIndex = 0;
-  List<String> tabs = [];
-  void pushToLogin() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (context) => LoginScreen()));
-  }
 
-  void openCart() {
-    navKey.currentState
-      ?..popUntil((route) => route.isFirst)
-      ..push(MaterialPageRoute(builder: (_) => CartScreen()));
+  List<String> tabs = [];
+  OrderService service = OrderService();
+
+  void pushToLogin() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => LoginScreen()));
+    if (!mounted) return;
+    if (isLoggedIn) {
+      await service.syncAfterLogin(); // gộp giỏ localStorage vào database
+    }
+    setState(() {});
   }
 
   void logout() async {
     loginResponse = LoginResponse("", "");
     await saveData(F_USER_NAME, "");
     await saveData(F_PASSWORD, "");
+    await service.getCart();
 
     if (!mounted) return;
     setState(() {});
     showToast("Đã đăng xuất", ToastificationType.success);
   }
 
-  @override
-  void initState() {
-    super.initState();
-    tabs = pages.keys.toList();
+  void openCart() {
+    navKey.currentState
+      ?..popUntil((route) => route.isFirst)
+      ..push(MaterialPageRoute(builder: (_) => CartScreen()));
   }
 
   void changePage(int index) {
@@ -57,6 +61,13 @@ class _MainScreenState extends State<MainScreen> {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeInOut,
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    tabs = pages.keys.toList();
+    service.getCart();
   }
 
   @override
@@ -115,10 +126,9 @@ class _MainScreenState extends State<MainScreen> {
           Spacer(),
           IconButton(onPressed: () {}, icon: Icon(Icons.search)),
           SizedBox(width: 20),
-          ValueListenableBuilder<List<CartItem>>(
-            valueListenable: CartStore.items,
-            builder: (context, items, _) {
-              final count = items.fold(0, (s, e) => s + e.qty);
+          ValueListenableBuilder<int>(
+            valueListenable: cartCount,
+            builder: (context, count, _) {
               return Badge(
                 isLabelVisible: count > 0,
                 label: Text('$count'),

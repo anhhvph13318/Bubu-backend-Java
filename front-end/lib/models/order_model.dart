@@ -84,6 +84,7 @@ class Order {
   double totalAmount = 0;
   int paymentMethod = 0;
   int paymentStatus = 0;
+  String trackingCode = "";
   int status = 0;
   DateTime? createdAt;
   int? accountId; // null = khách vãng lai
@@ -99,6 +100,7 @@ class Order {
     order.phone = json[F_PHONE] ?? "";
     order.address = json[F_ADDRESS] ?? "";
     order.note = json[F_NOTE] ?? "";
+    order.trackingCode = json[F_TRACKING_CODE] ?? "";
     order.totalAmount = (json[F_TOTAL_AMOUNT] as num?)?.toDouble() ?? 0;
     order.paymentMethod = json[F_PAYMENT_METHOD] ?? 0;
     order.paymentStatus = json[F_PAYMENT_STATUS] ?? 0;
@@ -122,12 +124,33 @@ class Order {
       F_TOTAL_AMOUNT: totalAmount,
       F_PAYMENT_METHOD: paymentMethod,
       F_PAYMENT_STATUS: paymentStatus,
+      F_TRACKING_CODE: trackingCode,
       F_STATUS: status,
       F_CREATED_AT: createdAt?.toIso8601String(),
       F_ACCOUNT_ID: accountId,
     };
 
     return map;
+  }
+}
+
+class PaymentLinkResponse extends ActionResult {
+  String orderCode = "";
+  String paymentUrl = "";
+
+  PaymentLinkResponse(super.errorCode, super.errorMessage);
+
+  factory PaymentLinkResponse.fromJson(Map<String, dynamic> json) {
+    PaymentLinkResponse response = PaymentLinkResponse(
+      nvl(json[F_ERROR_CODE]),
+      nvl(json[F_ERROR_MESSAGE]),
+    );
+    final data = json[F_DATA];
+    if (data is Map<String, dynamic>) {
+      response.orderCode = data[F_ORDER_CODE] ?? "";
+      response.paymentUrl = data[F_PAYMENT_URL] ?? "";
+    }
+    return response;
   }
 }
 
@@ -165,6 +188,51 @@ class OrderDetail {
   }
 }
 
+class CreateOrderRequest {
+  String customerName;
+  String phone;
+  String address;
+  String note;
+  int paymentMethod; // 0: COD, 1: trực tuyến
+  List<ItemRequest> items;
+
+  CreateOrderRequest({
+    required this.customerName,
+    required this.phone,
+    required this.address,
+    required this.note,
+    required this.paymentMethod,
+    required this.items,
+  });
+
+  // Không gửi accountId: server tự lấy từ session
+  Map<String, dynamic> toJson() => {
+    F_CUSTOMER_NAME: customerName,
+    F_PHONE: phone,
+    F_ADDRESS: address,
+    F_NOTE: note,
+    F_PAYMENT_METHOD: paymentMethod,
+    F_ITEMS: items.map((e) => e.toJson()).toList(),
+  };
+}
+
+class OrderResponse extends ActionResult {
+  Order order = Order();
+
+  OrderResponse(super.errorCode, super.errorMessage);
+
+  factory OrderResponse.fromJson(Map<String, dynamic> json) {
+    OrderResponse response = OrderResponse(
+      nvl(json[F_ERROR_CODE]),
+      nvl(json[F_ERROR_MESSAGE]),
+    );
+    if (json[F_DATA] != null) {
+      response.order = Order.fromJson(json[F_DATA]);
+    }
+    return response;
+  }
+}
+
 class ItemRequest {
   int productDetailId = 0;
   int quantity = 1;
@@ -198,7 +266,9 @@ class CartItemsRequest {
 
 class CartView {
   List<CartViewItem> items = [];
-  double totalAmount = 0;
+  int totalQuantity = 0;
+  int totalAmount = 0;
+  bool hasIssues = false;
 
   CartView();
 
@@ -208,7 +278,11 @@ class CartView {
     cart.items = (json[F_ITEMS] as List? ?? [])
         .map((e) => CartViewItem.fromJson(e))
         .toList();
-    cart.totalAmount = (json[F_TOTAL_AMOUNT] as num?)?.toDouble() ?? 0;
+    cart.totalQuantity =
+        (json[F_TOTAL_QUANTITY] as num?)?.toInt() ??
+        cart.items.fold(0, (s, e) => s + e.quantity);
+    cart.totalAmount = (json[F_TOTAL_AMOUNT] as num?)?.toInt() ?? 0;
+    cart.hasIssues = json[F_HAS_ISSUES] ?? false;
 
     return cart;
   }
@@ -221,9 +295,13 @@ class CartViewItem {
   String imageUrl = "";
   String size = "";
   String color = "";
-  double price = 0;
+  String? colorHex;
+  int price = 0;
   int quantity = 0;
   int stock = 10;
+  int lineTotal = 0;
+  bool available = true;
+  String? message;
 
   CartViewItem();
 
@@ -232,13 +310,17 @@ class CartViewItem {
 
     item.productDetailId = json[F_PRODUCT_DETAIL_ID] ?? 0;
     item.productId = json[F_PRODUCT_ID] ?? 0;
-    item.name = json[F_NAME] ?? "";
+    item.name = (json[F_PRODUCT_NAME] ?? json[F_NAME] ?? "").toString();
     item.imageUrl = json[F_IMAGE_URL] ?? "";
-    item.size = json[F_SIZE]?.toString() ?? "";
-    item.color = json[F_COLOR] ?? "";
-    item.price = (json[F_PRICE] as num?)?.toDouble() ?? 0;
+    item.size = (json[F_SIZE_NAME] ?? json[F_SIZE] ?? "").toString();
+    item.color = (json[F_COLOR_NAME] ?? json[F_COLOR] ?? "").toString();
+    item.colorHex = json[F_COLOR_HEX];
+    item.price = ((json[F_UNIT_PRICE] ?? json[F_PRICE]) as num?)?.toInt() ?? 0;
     item.quantity = json[F_QUANTITY] ?? 0;
     item.stock = json[F_STOCK] ?? 10;
+    item.lineTotal = (json[F_LINE_TOTAL] as num?)?.toInt() ?? 0;
+    item.available = json[F_AVAILABLE] ?? true;
+    item.message = json[F_MESSAGE];
 
     return item;
   }

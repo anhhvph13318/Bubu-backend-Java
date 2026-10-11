@@ -6,10 +6,10 @@ import 'package:toastification/toastification.dart';
 double sidePadding(double width) =>
     width >= 1400 ? 64 : (width >= 1040 ? 40 : 24);
 const primaryColor = Color(0xFF14183A);
-int? currentAccountId;
-bool get isLoggedIn => currentAccountId != null;
-FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 
+bool get isLoggedIn => loginResponse.id > 0;
+FlutterSecureStorage secureStorage = const FlutterSecureStorage();
+final ValueNotifier<int> cartCount = ValueNotifier<int>(0);
 const String baseUrl = "http://localhost:8080";
 LoginRequest loginRequest = LoginRequest();
 LoginResponse loginResponse = LoginResponse("", "");

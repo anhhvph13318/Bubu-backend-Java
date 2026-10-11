@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:bubu_web_client/roots/cart_screen.dart';
 import 'package:bubu_web_client/utils/string_utils.dart';
 import 'package:bubu_web_client/widgets/footer_widget.dart';
 import 'package:bubu_web_client/widgets/section_drop_widget.dart';
@@ -111,28 +110,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
 
-    // Chưa đăng nhập: lưu giỏ tạm trong máy (CartStore), sau này merge khi đăng nhập
-    if (currentAccountId == null) {
-      CartStore.add(
-        CartItem(
-          id: v.id,
-          productId: widget.product.id,
-          name: widget.product.name,
-          imageUrl: widget.product.imageUrl,
-          size: v.size,
-          color: v.color,
-          price: widget.product.price.toInt(),
-          qty: qty,
-          maxQty: max(1, min(10, v.quantity)),
-        ),
-      );
-      showToast('Đã thêm vào giỏ hàng', ToastificationType.success);
-      return;
-    }
-
     final response = await orderService.addItem(
-      currentAccountId!,
       ItemRequest(v.id, qty),
+      stock: v.quantity,
     );
     if (!mounted) return;
 

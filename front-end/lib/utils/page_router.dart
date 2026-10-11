@@ -1,7 +1,7 @@
 import 'package:bubu_web_client/roots/contact_screen.dart';
 import 'package:bubu_web_client/roots/home_screen.dart';
 import 'package:bubu_web_client/roots/information_screen.dart';
-import 'package:bubu_web_client/roots/product_screen_v2.dart';
+import 'package:bubu_web_client/roots/product_screen.dart';
 import 'package:flutter/material.dart';
 
 import '../models/tab_item.dart';
@@ -18,7 +18,7 @@ Map<String, TabItem> pages = {
     icon: Icons.inventory_2,
     label: 'Sản phẩm',
     module: "",
-    page: ProductScreenV2(),
+    page: ProductScreen(),
   ),
   CONTACT_TAB: TabItem(
     icon: Icons.contacts,
