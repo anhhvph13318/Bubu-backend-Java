@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.security.SecureRandom;
 import java.util.Objects;
+import com.example.bububackend.DTO.PaymentOutcome;
+import java.math.RoundingMode;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -249,4 +251,86 @@ public class OrderService {
         order.setStatus(STATUS_CANCELLED);
         return orderRepository.save(order);
     }
+    // ---------- Thanh toán online (VNPay) ----------
+
+    // Thời gian khách có để thanh toán đơn VNPay; quá hạn thì đơn tự hủy (cộng lại kho)
+    public static final int PAYMENT_WINDOW_MINUTES = 15;
+
+    // Đơn có thể tạo link thanh toán: tìm bằng mã tra cứu (chỉ người đặt đơn mới biết),
+    // phải là đơn VNPay, chưa thanh toán và còn "Chờ xác nhận".
+    public Order getPayableOrder(String trackingCode) {
+        String code = trackingCode == null ? "" : trackingCode.trim().toUpperCase().replaceAll("[\\s-]", "");
+        Order order = (code.isEmpty() ? java.util.Optional.<Order>empty() : orderRepository.findByTrackingCode(code))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng"));
+        if (order.getPaymentMethod() != 1) {
+            throw bad("Đơn hàng này không thanh toán qua VNPay");
+        }
+        if (order.getPaymentStatus() != 0) {
+            throw bad("Đơn hàng đã được thanh toán");
+        }
+        if (order.getStatus() != STATUS_PENDING) {
+            throw bad("Đơn hàng không còn ở trạng thái chờ thanh toán");
+        }
+        return order;
+    }
+
+    /**
+     * Ghi nhận kết quả thanh toán VNPay cho một đơn (gọi từ trang trả về và từ IPN, chạy lặp lại vẫn an toàn).
+     * vnpAmount là số tiền VNPay báo (đã nhân 100). Khóa dòng đơn nên hai nơi gọi cùng lúc cũng không bị đụng nhau.
+     * - Thành công: PaymentStatus = 1 (đơn vẫn "Chờ xác nhận", admin xác nhận như thường).
+     * - Thất bại: hủy đơn và cộng kho lại (nếu đơn còn "Chờ xác nhận").
+     * - Đã nhận tiền mà đơn đã bị hủy (ví dụ quá hạn): ghi PaymentStatus = 1 và giữ nguyên "Đã hủy";
+     *   admin nhìn thấy đơn Đã hủy + Đã thanh toán là biết cần hoàn tiền.
+     */
+    @Transactional
+    public PaymentOutcome applyOnlinePayment(String orderCode, long vnpAmount, boolean paid) {
+        Order order = orderRepository.findByOrderCodeForUpdate(orderCode).orElse(null);
+        if (order == null || order.getPaymentMethod() != 1) {
+            return PaymentOutcome.NOT_FOUND;
+        }
+        long expected = order.getTotalAmount().setScale(0, RoundingMode.HALF_UP).longValue() * 100;
+        if (vnpAmount != expected) {
+            return PaymentOutcome.AMOUNT_MISMATCH;
+        }
+
+        if (order.getPaymentStatus() == 1) { // đã ghi nhận từ trước
+            return order.getStatus() == STATUS_CANCELLED ? PaymentOutcome.PAID_BUT_CANCELLED
+                    : PaymentOutcome.ALREADY_PAID;
+        }
+
+        if (paid) {
+            order.setPaymentStatus(1);
+            orderRepository.save(order);
+            return order.getStatus() == STATUS_CANCELLED ? PaymentOutcome.PAID_BUT_CANCELLED
+                    : PaymentOutcome.PAID;
+        }
+
+        if (order.getStatus() == STATUS_PENDING) {
+            restoreStock(order.getId());
+            order.setStatus(STATUS_CANCELLED);
+            orderRepository.save(order);
+            return PaymentOutcome.FAILED_CANCELLED;
+        }
+        return PaymentOutcome.FAILED_NO_CHANGE;
+    }
+
+    // Tự hủy các đơn VNPay quá hạn thanh toán (cộng lại kho). Gọi định kỳ bởi OnlinePaymentJob.
+    // Chờ thêm 1 phút sau hạn để không hủy nhầm đơn đang thanh toán sát giờ.
+    @Transactional
+    public int cancelExpiredOnlineOrders() {
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(PAYMENT_WINDOW_MINUTES + 1L);
+        int cancelled = 0;
+        for (Integer id : orderRepository.findExpiredOnlineOrderIds(cutoff)) {
+            Order order = orderRepository.findByIdForUpdate(id).orElse(null);
+            if (order == null || order.getStatus() != STATUS_PENDING || order.getPaymentStatus() != 0) {
+                continue;
+            }
+            restoreStock(id);
+            order.setStatus(STATUS_CANCELLED);
+            orderRepository.save(order);
+            cancelled++;
+        }
+        return cancelled;
+    }
+
 }

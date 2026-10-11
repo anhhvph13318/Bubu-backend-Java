@@ -29,6 +29,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             "/api/auth/logout",
             "/api/carts/preview",
             "/api/favorites/preview",
+            "/api/payment/vnpay/create",
             "/api/orders");
 
     // GET không cần đăng nhập (khách xem hàng)
@@ -39,7 +40,8 @@ public class AuthInterceptor implements HandlerInterceptor {
             "/api/colors",
             "/api/product-details",
             "/api/images",
-            "/api/orders/track");
+            "/api/orders/track",
+            "/api/payment/vnpay");
 
     // /api/carts/{accountId} hoặc /api/carts/{accountId}/...
     private static final Pattern CART_PATH = Pattern.compile("^/api/carts/(\\d{1,9})(/.*)?$");
