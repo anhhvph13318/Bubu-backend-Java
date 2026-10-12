@@ -144,10 +144,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget getListShoes(BoxConstraints constraints) {
-    final width = constraints.maxWidth;
-    final columns = width >= 1500
-        ? 6
-        : (width >= 1200 ? 5 : (width >= 1000 ? 4 : (width >= 640 ? 3 : 2)));
     return products.isNotEmpty
         ? GridView.builder(
             shrinkWrap: true,

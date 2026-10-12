@@ -1,6 +1,7 @@
 import 'package:bubu_web_client/utils/string_utils.dart';
 import 'package:bubu_web_client/widgets/footer_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:toastification/toastification.dart';
 
 import '../models/order_model.dart';
@@ -185,7 +186,7 @@ class _CartScreenState extends State<CartScreen> {
       showToast(res.errorMessage, ToastificationType.error);
       return;
     }
-
+    if (!isLoggedIn) await service.addGuestCode(res.order.trackingCode);
     // Đơn đã được tạo trên server: dọn giỏ ngay (cả COD lẫn VNPay)
     // để khách không thể bấm đặt lại và tạo trùng đơn.
     await _apply(service.clearCart());
@@ -270,31 +271,90 @@ class _CartScreenState extends State<CartScreen> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Mã đơn hàng: ${order.orderCode}',
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: _ink,
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mã đơn hàng: ${order.orderCode}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _ink,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tổng tiền: ${order.totalAmount.toInt().formatThousand()}',
-              style: const TextStyle(fontSize: 14.5, color: _ink),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              method == payCod
-                  ? 'Bạn sẽ thanh toán khi nhận hàng.'
-                  : 'Đơn hàng đã được thanh toán qua VNPay.',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
-            ),
-          ],
+              if (order.trackingCode.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+                  decoration: BoxDecoration(
+                    color: _soft,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _border),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Mã tra cứu',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            SelectableText(
+                              order.trackingCode,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: _pink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Sao chép',
+                        icon: const Icon(Icons.copy_rounded, size: 20),
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: order.trackingCode),
+                          );
+                          showToast(
+                            'Đã sao chép mã tra cứu',
+                            ToastificationType.success,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Hãy lưu lại mã này để tra cứu đơn hàng sau.',
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                'Tổng tiền: ${order.totalAmount.toInt().formatThousand()}',
+                style: const TextStyle(fontSize: 14.5, color: _ink),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                method == payCod
+                    ? 'Bạn sẽ thanh toán khi nhận hàng.'
+                    : 'Đơn hàng đã được thanh toán qua VNPay.',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+              ),
+            ],
+          ),
         ),
         actions: [
           FilledButton(

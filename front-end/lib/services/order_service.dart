@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:html' as html;
 
 import '../models/order_model.dart';
 import '../utils/fields.dart';
@@ -186,6 +187,69 @@ class OrderService {
       return OrderResponse.fromJson(response);
     } catch (e) {
       return OrderResponse("FAIL", e.toString());
+    }
+  }
+
+  // ---- Đơn của khách vãng lai: lưu trackingCode trên trình duyệt ----
+  static const _guestOrdersKey = "GUEST_ORDER_CODES";
+
+  Future<List<String>> getGuestCodes() async {
+    final raw = html.window.localStorage[_guestOrdersKey];
+    if (raw == null || raw.isEmpty) return [];
+    return raw.split(",");
+  }
+
+  Future<void> addGuestCode(String code) async {
+    if (code.isEmpty) return;
+    final codes = await getGuestCodes();
+    if (!codes.contains(code)) {
+      codes.insert(0, code);
+      html.window.localStorage[_guestOrdersKey] = codes.join(",");
+    }
+  }
+
+  // GET /api/orders/track/{trackingCode}
+  Future<MyOrderResponse> lookupOrder(String trackingCode) async {
+    String url =
+        "$baseUrl/api/orders/track/${Uri.encodeComponent(trackingCode.trim())}";
+    try {
+      final response = await httpService.get(url);
+      return MyOrderResponse.fromJson(response);
+    } catch (e) {
+      return MyOrderResponse("FAIL", "Không tìm thấy đơn hàng");
+    }
+  }
+
+  // Đã đăng nhập: GET /api/orders/my. Vãng lai: tra từng mã đã lưu.
+  Future<MyOrderListResponse> getMyOrders() async {
+    if (isLoggedIn) {
+      String url = "$baseUrl/api/orders/my";
+      try {
+        final response = await httpService.get(url);
+        return MyOrderListResponse.fromJson(response);
+      } catch (e) {
+        return MyOrderListResponse("FAIL", e.toString());
+      }
+    }
+
+    final codes = await getGuestCodes();
+    final results = await Future.wait(codes.map(lookupOrder));
+    final res = MyOrderListResponse("OK", "");
+    res.orders = results
+        .where((r) => r.errorMessage.isEmpty)
+        .map((r) => r.order)
+        .toList();
+    return res;
+  }
+
+  // POST /api/orders/my/{id}/cancel (cần đăng nhập)
+  Future<MyOrderResponse> cancelMyOrder(int id) async {
+    String url = "$baseUrl/api/orders/my/$id/cancel";
+    try {
+      final response = await httpService.post(url, body: {});
+      return MyOrderResponse.fromJson(response);
+    } catch (e) {
+      return MyOrderResponse("FAIL", e.toString());
     }
   }
 }

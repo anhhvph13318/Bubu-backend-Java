@@ -1,5 +1,7 @@
 import 'package:bubu_web_client/roots/cart_screen.dart';
 import 'package:bubu_web_client/roots/login_screen.dart';
+import 'package:bubu_web_client/roots/my_orders_screen.dart';
+import 'package:bubu_web_client/roots/track_order_screen.dart';
 import 'package:bubu_web_client/services/order_service.dart';
 import 'package:flutter/material.dart';
 import 'package:toastification/toastification.dart';
@@ -42,6 +44,7 @@ class _MainScreenState extends State<MainScreen> {
     await service.getCart();
 
     if (!mounted) return;
+    navKey.currentState?.popUntil((route) => route.isFirst);
     setState(() {});
     showToast("Đã đăng xuất", ToastificationType.success);
   }
@@ -52,6 +55,14 @@ class _MainScreenState extends State<MainScreen> {
       ..push(MaterialPageRoute(builder: (_) => CartScreen()));
   }
 
+  void _openPage(Widget screen) {
+    navKey.currentState
+      ?..popUntil((route) => route.isFirst)
+      ..push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  void openTrack() => _openPage(const TrackOrderScreen());
+  void openMyOrders() => _openPage(const MyOrdersScreen());
   void changePage(int index) {
     navKey.currentState?.popUntil((route) => route.isFirst);
     setState(() => selectedIndex = index);
@@ -124,7 +135,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
           Spacer(),
-          IconButton(onPressed: () {}, icon: Icon(Icons.search)),
+          IconButton(onPressed: openTrack, icon: Icon(Icons.search)),
           SizedBox(width: 20),
           ValueListenableBuilder<int>(
             valueListenable: cartCount,
@@ -171,6 +182,7 @@ class _MainScreenState extends State<MainScreen> {
           case "profile":
             break;
           case "orders":
+            openMyOrders();
             break;
           case "logout":
             logout();

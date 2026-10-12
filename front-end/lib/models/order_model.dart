@@ -349,3 +349,86 @@ class CartResponse extends ActionResult {
     return response;
   }
 }
+
+class MyOrderView {
+  int id = 0;
+  String orderCode = "";
+  int status = 0;
+  String statusText = "";
+  int paymentMethod = 0;
+  int paymentStatus = 0;
+  double totalAmount = 0;
+  DateTime? createdAt;
+  String customerName = "";
+  String phone = "";
+  String address = "";
+  String note = "";
+  bool canCancel = false;
+
+  MyOrderView();
+
+  factory MyOrderView.fromJson(Map<String, dynamic> json) {
+    MyOrderView o = MyOrderView();
+
+    o.id = json[F_ID] ?? 0;
+    o.orderCode = json[F_ORDER_CODE] ?? "";
+    o.status = json[F_STATUS] ?? 0;
+    o.statusText = json[F_STATUS_TEXT] ?? "";
+    o.paymentMethod = json[F_PAYMENT_METHOD] ?? 0;
+    o.paymentStatus = json[F_PAYMENT_STATUS] ?? 0;
+    o.totalAmount = (json[F_TOTAL_AMOUNT] as num?)?.toDouble() ?? 0;
+    o.createdAt = json[F_CREATED_AT] != null
+        ? DateTime.tryParse(json[F_CREATED_AT].toString())
+        : null;
+    o.customerName = json[F_CUSTOMER_NAME] ?? "";
+    o.phone = json[F_PHONE] ?? "";
+    o.address = json[F_ADDRESS] ?? "";
+    o.note = json[F_NOTE] ?? "";
+    o.canCancel = json[F_CAN_CANCEL] ?? false;
+
+    return o;
+  }
+}
+
+// 1 đơn: dùng cho track và cancel
+class MyOrderResponse extends ActionResult {
+  MyOrderView order = MyOrderView();
+
+  MyOrderResponse(super.errorCode, super.errorMessage);
+
+  factory MyOrderResponse.fromJson(Map<String, dynamic> json) {
+    MyOrderResponse response = MyOrderResponse(
+      nvl(json[F_ERROR_CODE]),
+      nvl(json[F_ERROR_MESSAGE]),
+    );
+    if (json[F_DATA] is Map<String, dynamic>) {
+      response.order = MyOrderView.fromJson(json[F_DATA]);
+    } else if (response.errorMessage.isEmpty) {
+      // Spring trả lỗi 404/401/400 dạng {"message": "..."}
+      response.errorMessage = nvl(json[F_MESSAGE]).isEmpty
+          ? "Không tìm thấy đơn hàng"
+          : nvl(json["message"]);
+    }
+    return response;
+  }
+}
+
+class MyOrderListResponse extends ActionResult {
+  List<MyOrderView> orders = [];
+
+  MyOrderListResponse(super.errorCode, super.errorMessage);
+
+  factory MyOrderListResponse.fromJson(Map<String, dynamic> json) {
+    MyOrderListResponse response = MyOrderListResponse(
+      nvl(json[F_ERROR_CODE]),
+      nvl(json[F_ERROR_MESSAGE]),
+    );
+    response.orders = (json[F_DATA] as List? ?? [])
+        .map((e) => MyOrderView.fromJson(e))
+        .toList();
+    if (json[F_DATA] == null && json[F_MESSAGE] != null) {
+      response.errorMessage = nvl(json[F_MESSAGE]);
+    }
+    return response;
+  }
+}
