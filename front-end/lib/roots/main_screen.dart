@@ -1,4 +1,5 @@
 import 'package:bubu_web_client/roots/cart_screen.dart';
+import 'package:bubu_web_client/roots/favourite_screen.dart';
 import 'package:bubu_web_client/roots/login_screen.dart';
 import 'package:bubu_web_client/roots/my_orders_screen.dart';
 import 'package:bubu_web_client/roots/track_order_screen.dart';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:toastification/toastification.dart';
 
 import '../models/login_model.dart';
+import '../services/product_service.dart';
 import '../utils/fields.dart';
 import '../utils/global.dart';
 import '../utils/page_router.dart';
@@ -23,7 +25,7 @@ class _MainScreenState extends State<MainScreen> {
   final PageController pageController = PageController();
   final GlobalKey<NavigatorState> navKey = GlobalKey<NavigatorState>();
   int selectedIndex = 0;
-
+  ProductService productService = ProductService(); // thêm vào State
   List<String> tabs = [];
   OrderService service = OrderService();
 
@@ -32,7 +34,8 @@ class _MainScreenState extends State<MainScreen> {
         .push(MaterialPageRoute(builder: (context) => LoginScreen()));
     if (!mounted) return;
     if (isLoggedIn) {
-      await service.syncAfterLogin(); // gộp giỏ localStorage vào database
+      await service.syncAfterLogin();
+      await productService.syncFavoritesAfterLogin();
     }
     setState(() {});
   }
@@ -42,6 +45,7 @@ class _MainScreenState extends State<MainScreen> {
     await saveData(F_USER_NAME, "");
     await saveData(F_PASSWORD, "");
     await service.getCart();
+    await productService.loadFavoriteIds(); // quay về yêu thích local
 
     if (!mounted) return;
     navKey.currentState?.popUntil((route) => route.isFirst);
@@ -49,6 +53,7 @@ class _MainScreenState extends State<MainScreen> {
     showToast("Đã đăng xuất", ToastificationType.success);
   }
 
+  void openFavorites() => _openPage(FavoriteScreen());
   void openCart() {
     navKey.currentState
       ?..popUntil((route) => route.isFirst)
@@ -79,6 +84,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     tabs = pages.keys.toList();
     service.getCart();
+    productService.loadFavoriteIds();
   }
 
   @override
@@ -136,6 +142,21 @@ class _MainScreenState extends State<MainScreen> {
           ),
           Spacer(),
           IconButton(onPressed: openTrack, icon: Icon(Icons.search)),
+          SizedBox(width: 20),
+          ValueListenableBuilder<Set<int>>(
+            valueListenable: favoriteIds,
+            builder: (context, ids, _) => Badge(
+              isLabelVisible: ids.isNotEmpty,
+              label: Text('${ids.length}'),
+              backgroundColor: const Color(0xFFFF5C8A),
+              child: IconButton(
+                onPressed: openFavorites,
+                icon: Icon(
+                  ids.isNotEmpty ? Icons.favorite : Icons.favorite_border,
+                ),
+              ),
+            ),
+          ),
           SizedBox(width: 20),
           ValueListenableBuilder<int>(
             valueListenable: cartCount,

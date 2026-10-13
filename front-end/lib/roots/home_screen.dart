@@ -157,16 +157,23 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             itemBuilder: (context, index) {
               final product = products[index];
-              return InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  Navigator.of(context).push(
+              return ValueListenableBuilder<Set<int>>(
+                valueListenable: favoriteIds,
+                builder: (context, ids, _) => ProductCardWidget(
+                  product: product,
+                  liked: ids.contains(product.id),
+                  onLike: () async {
+                    final error = await service.toggle(product.id);
+                    if (error.isNotEmpty) {
+                      showToast(error, ToastificationType.error);
+                    }
+                  },
+                  onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => ProductDetailScreen(product: product),
                     ),
-                  );
-                },
-                child: ProductCardWidget(product: product),
+                  ),
+                ),
               );
             },
           )

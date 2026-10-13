@@ -10,6 +10,7 @@ const primaryColor = Color(0xFF14183A);
 bool get isLoggedIn => loginResponse.id > 0;
 FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 final ValueNotifier<int> cartCount = ValueNotifier<int>(0);
+final ValueNotifier<Set<int>> favoriteIds = ValueNotifier(<int>{});
 const String baseUrl = "http://localhost:8080";
 LoginRequest loginRequest = LoginRequest();
 LoginResponse loginResponse = LoginResponse("", "");

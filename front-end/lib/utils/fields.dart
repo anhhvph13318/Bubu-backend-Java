@@ -26,6 +26,7 @@ const String F_MAIN = "main";
 const String F_CATEGORY_NAME = "categoryName";
 const String F_TOTAL_QUANTITY = "totalQuantity";
 const String F_USER_ID = "userID";
+const String F_FAVORITES = "favorites";
 
 // admin
 const String F_CODE = "code";

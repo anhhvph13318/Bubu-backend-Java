@@ -350,3 +350,114 @@ class ProductDetailResponse extends ActionResult {
     return response;
   }
 }
+
+class Favorite {
+  int id = 0;
+  int accountId = 0;
+  int productId = 0;
+  DateTime? createdAt;
+
+  Favorite();
+
+  factory Favorite.fromJson(Map<String, dynamic> json) {
+    Favorite f = Favorite();
+
+    f.id = json[F_ID] ?? 0;
+    f.accountId = json[F_ACCOUNT_ID] ?? 0;
+    f.productId = json[F_PRODUCT_ID] ?? 0;
+    f.createdAt = json[F_CREATED_AT] != null
+        ? DateTime.tryParse(json[F_CREATED_AT].toString())
+        : null;
+
+    return f;
+  }
+
+  Map<String, dynamic> toJson() {
+    Map<String, dynamic> map = {
+      F_ID: id,
+      F_ACCOUNT_ID: accountId,
+      F_PRODUCT_ID: productId,
+      F_CREATED_AT: createdAt?.toIso8601String(),
+    };
+
+    return map;
+  }
+}
+
+class FavoriteItem {
+  int productId = 0;
+  String name = '';
+  int price = 0;
+  String imageUrl = '';
+  int quantity = 0;
+
+  FavoriteItem();
+
+  factory FavoriteItem.fromJson(Map<String, dynamic> json) {
+    final f = FavoriteItem();
+    f.productId = json[F_PRODUCT_ID] ?? json[F_ID] ?? 0;
+    f.name = json[F_NAME] ?? json[F_PRODUCT_NAME] ?? '';
+    f.price = (json[F_PRICE] ?? 0).toInt();
+    f.imageUrl = json[F_IMAGE_URL] ?? '';
+    f.quantity = json[F_QUANTITY] ?? json[F_STOCK] ?? 0;
+    return f;
+  }
+
+  Product toProduct() {
+    final p = Product();
+    p.id = productId;
+    p.name = name;
+    p.price = price;
+    p.imageUrl = imageUrl;
+    return p;
+  }
+}
+
+class FavoriteListResponse extends ActionResult {
+  List<FavoriteItem> items = [];
+
+  FavoriteListResponse(super.errorCode, super.errorMessage);
+
+  factory FavoriteListResponse.fromJson(Map<String, dynamic> json) {
+    final r = FavoriteListResponse(
+      nvl(json[F_ERROR_CODE]),
+      nvl(json[F_ERROR_MESSAGE]),
+    );
+
+    r.items = ((json[F_DATA] ?? []) as List)
+        .map((e) => FavoriteItem.fromJson(e))
+        .toList();
+    return r;
+  }
+}
+
+class FavoriteIdsResponse extends ActionResult {
+  List<int> ids = [];
+
+  FavoriteIdsResponse(super.errorCode, super.errorMessage);
+
+  factory FavoriteIdsResponse.fromJson(Map<String, dynamic> json) {
+    final r = FavoriteIdsResponse(
+      nvl(json[F_ERROR_CODE]),
+      nvl(json[F_ERROR_MESSAGE]),
+    );
+
+    r.ids = ((json[F_DATA] ?? []) as List).map((e) => e as int).toList();
+    return r;
+  }
+}
+
+/// Dùng cho POST/DELETE không trả dữ liệu.
+class FavoriteActionResponse {
+  String status = '';
+  String errorMessage = '';
+
+  FavoriteActionResponse(this.status, this.errorMessage);
+
+  factory FavoriteActionResponse.fromJson(Map<String, dynamic> json) {
+    if (json['success'] == false) {
+      return FavoriteActionResponse('FAIL', json['message'] ?? 'Có lỗi xảy ra');
+    }
+    return FavoriteActionResponse('OK', '');
+  }
+}

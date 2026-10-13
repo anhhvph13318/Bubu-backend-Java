@@ -123,6 +123,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
+  Future<void> toggleFavorite() async {
+    final wasLiked = favoriteIds.value.contains(widget.product.id);
+    final error = await service.toggle(widget.product.id);
+    if (!mounted) return;
+    if (error.isEmpty) {
+      showToast(
+        wasLiked ? 'Đã bỏ khỏi yêu thích' : 'Đã thêm vào yêu thích',
+        ToastificationType.success,
+      );
+    } else {
+      showToast(error, ToastificationType.error);
+    }
+  }
+
   void selectSize(int id) {
     setState(() {
       if (selectedSizeId == id) {
@@ -302,17 +316,62 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: AspectRatio(
-              aspectRatio: 1.1,
-              child: loadingDetail && imgs.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : Image.network(
-                      mainUrl,
-                      key: ValueKey(mainUrl),
-                      fit: BoxFit.cover,
-                    ),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: AspectRatio(
+                    aspectRatio: 1.1,
+                    child: loadingDetail && imgs.isEmpty
+                        ? const Center(child: CircularProgressIndicator())
+                        : SizedBox.expand(
+                            child: Image.network(
+                              mainUrl,
+                              key: ValueKey(mainUrl),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  top: 14,
+                  right: 14,
+                  child: ValueListenableBuilder<Set<int>>(
+                    valueListenable: favoriteIds,
+                    builder: (context, ids, _) {
+                      final liked = ids.contains(widget.product.id);
+                      return Material(
+                        color: Colors.white,
+                        shape: const CircleBorder(),
+                        elevation: 3,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: toggleFavorite,
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Icon(
+                              liked ? Icons.favorite : Icons.favorite_border,
+                              color: liked ? _pink : _ink,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         ),

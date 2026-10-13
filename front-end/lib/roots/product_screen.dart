@@ -353,9 +353,19 @@ class _ProductScreenState extends State<ProductScreen>
             ),
             itemBuilder: (context, index) {
               final p = items[index];
-              return ProductCardWidget(
-                product: p,
-                onTap: () => pushToDetail(p),
+              return ValueListenableBuilder<Set<int>>(
+                valueListenable: favoriteIds,
+                builder: (context, ids, _) => ProductCardWidget(
+                  product: p,
+                  liked: ids.contains(p.id),
+                  onLike: () async {
+                    final error = await service.toggle(p.id);
+                    if (error.isNotEmpty) {
+                      showToast(error, ToastificationType.error);
+                    }
+                  },
+                  onTap: () => pushToDetail(p),
+                ),
               );
             },
           );

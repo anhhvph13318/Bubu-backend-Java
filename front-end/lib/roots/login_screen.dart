@@ -134,19 +134,32 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    loginResponse = response;
-    TextInput.finishAutofillContext();
+    // Đăng ký thành công -> quay về form đăng nhập
+    final registeredUsername = registerRequest.username;
 
-    if (rememberPassword) {
-      await saveData(F_USERNAME, registerRequest.username);
-      await saveData(F_PASSWORD, registerRequest.password);
-    }
+    // Xóa dữ liệu form đăng ký
+    fullNameController.clear();
+    emailController.clear();
+    phoneController.clear();
+    regUsernameController.clear();
+    regPasswordController.clear();
+    confirmPasswordController.clear();
+    _registerKey.currentState?.reset();
 
-    if (!mounted) return;
-    showToast("Đăng ký thành công!", ToastificationType.success);
+    showToast(
+      "Đăng ký thành công! Vui lòng đăng nhập.",
+      ToastificationType.success,
+    );
 
-    Navigator.of(context)
-        .pushReplacement(MaterialPageRoute(builder: (context) => MainScreen()));
+    setState(() {
+      isRegisterMode = false;
+      passwordVisible = false;
+      confirmPasswordVisible = false;
+    });
+
+    // Điền sẵn tên đăng nhập, để người dùng chỉ cần nhập mật khẩu
+    usernameController.text = registeredUsername;
+    passwordController.clear();
   }
 
   @override
