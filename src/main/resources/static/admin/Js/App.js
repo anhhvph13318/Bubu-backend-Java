@@ -296,6 +296,13 @@
         return isNaN(t) ? '' : t.toISOString();
     };
 
+    // Hình thức thanh toán: backend lưu số (0 = COD, 1 = VNPay) -> đổi sang chữ để hiển thị
+    const PAYMENT_LABELS = { 0: 'Thanh toán khi nhận hàng (COD)', 1: 'VNPay' };
+    const paymentLabel = (v) => {
+        const s = String(v ?? '').trim();
+        return /^\d+$/.test(s) ? (PAYMENT_LABELS[Number(s)] ?? 'Khác (' + s + ')') : s;
+    };
+
     // API -> giao diện: biến một đơn hàng thô thành dạng thống nhất
     function fromApiOrder(raw, i) {
         const id = get(raw, 'order_id', i + 1);
@@ -316,7 +323,7 @@
             address: String(get(raw, 'order_address', isObj ? nestGet(cust, NEST.address) : '')),
             date: toIso(get(raw, 'order_date', '')),
             status, statusRaw: String(rawStatus),
-            payment: String(get(raw, 'order_payment', '')),
+            payment: paymentLabel(get(raw, 'order_payment', '')),
             total: total == null || isNaN(Number(total)) ? null : Number(total), // null = tự tính từ các dòng sản phẩm
             items: (Array.isArray(items) ? items : []).map((it) => {
                 // Sản phẩm trong dòng có thể là object, id số, hoặc nằm thẳng trong dòng
@@ -346,8 +353,7 @@
             [['name', item.customer], ['phone', item.phone], ['address', item.address]].forEach(([f, v]) => { const k = NEST[f].find((x) => x in o); if (k) o[k] = v; });
             raw[ck] = o;
         } else setIf('order_customer', item.customer);
-        setIf('order_phone', item.phone); setIf('order_address', item.address); setIf('order_payment', item.payment);
-
+        setIf('order_phone', item.phone); setIf('order_address', item.address);
         // Chỉ ghi trạng thái khi người dùng thật sự đổi; nếu không, giữ nguyên giá trị gốc của backend
         const sk = pick(ref, 'order_status') || 'status';
         const original = item._raw ? normOrderStatus(item._raw[sk]) : null;
@@ -1215,7 +1221,10 @@
         const o = data.orders.find((x) => x.id === id); if (!o) return;
         // Lấy chi tiết sản phẩm của đơn hàng
         const res = await fetch(`/api/order-details/order/${id}`); if (!res.ok) { alert('Không thể lấy chi tiết đơn hàng'); return; } const result = await res.json();
-        const items = result.data; openDrawer({ title: 'Đơn ' + o.code, body: ` <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"> <div class="detail-title" style="margin:0"> ${esc(o.customer)} </div> ${orderTag(o)} </div> <dl class="kv"> <dt>Số điện thoại</dt> <dd>${esc(o.phone)}</dd> <dt>Địa chỉ</dt> <dd>${esc(o.address)}</dd> <dt>Ngày đặt</dt> <dd>${fmtDateTime(o.date)}</dd> <dt>Thanh toán</dt> <dd>${esc(o.payment)}</dd> </dl> <h4 style="margin:6px 0">Sản phẩm</h4> <table class="items"> <tbody> ${items.map((it) => ` <tr> <td> ${it.imageUrl ? `<img src="${esc(it.imageUrl)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : '📦' } ${esc(it.productName)} <span style="color:var(--muted)"> × ${it.quantity} </span> <div style="font-size:12px;color:var(--muted)"> Size: ${it.size} | Màu: ${esc(it.color)} </div> </td> <td class="num price"> ${money(it.price * it.quantity)} </td> </tr> `).join('')} <tr> <td style="font-weight:700;border-top:1px solid var(--line)"> Tổng cộng </td> <td class="num price" style="color:var(--brand);font-size:16px;border-top:1px solid var(--line)" > ${money(o.totalAmount)} </td> </tr> </tbody> </table> `, foot: ` <button class="btn" data-close> Đóng </button> <button class="btn btn-primary" id="dEdit"> Cập nhật trạng thái </button> `, }); $('#dEdit').onclick = () => { closeDrawer(); orderForm(o); };
+        const items = result.data || [];
+    // Tổng tiền: ưu tiên số backend lưu trong đơn; nếu thiếu / bằng 0 thì cộng từ các dòng sản phẩm
+        const detailTotal = o.total > 0 ? o.total : items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0);
+        openDrawer({ title: 'Đơn ' + o.code, body: ` <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"> <div class="detail-title" style="margin:0"> ${esc(o.customer)} </div> ${orderTag(o)} </div> <dl class="kv"> <dt>Số điện thoại</dt> <dd>${esc(o.phone)}</dd> <dt>Địa chỉ</dt> <dd>${esc(o.address)}</dd> <dt>Ngày đặt</dt> <dd>${fmtDateTime(o.date)}</dd> <dt>Thanh toán</dt> <dd>${esc(o.payment)}</dd> </dl> <h4 style="margin:6px 0">Sản phẩm</h4> <table class="items"> <tbody> ${items.map((it) => ` <tr> <td> ${it.imageUrl ? `<img src="${esc(it.imageUrl)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:6px">` : '📦' } ${esc(it.productName)} <span style="color:var(--muted)"> × ${it.quantity} </span> <div style="font-size:12px;color:var(--muted)"> Size: ${it.size} | Màu: ${esc(it.color)} </div> </td> <td class="num price"> ${money(it.price * it.quantity)} </td> </tr> `).join('')} <tr> <td style="font-weight:700;border-top:1px solid var(--line)"> Tổng cộng </td> <td class="num price" style="color:var(--brand);font-size:16px;border-top:1px solid var(--line)" > ${money(detailTotal)} </td> </tr> </tbody> </table> `, foot: ` <button class="btn" data-close> Đóng </button> <button class="btn btn-primary" id="dEdit"> Cập nhật trạng thái </button> `, }); $('#dEdit').onclick = () => { closeDrawer(); orderForm(o); };
     }
 
     // Form cập nhật đơn hàng (trạng thái + thông tin giao hàng)
